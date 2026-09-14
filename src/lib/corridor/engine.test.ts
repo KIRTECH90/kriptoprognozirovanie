@@ -63,5 +63,7 @@ describe("engine", () => {
     assert.ok(["buy", "sell", "wait"].includes(a.verdict.side));
     assert.ok([12, 24, 48].includes(a.verdict.holdHours));
     assert.ok(Number.isFinite(a.verdict.target));
+    assert.ok(Array.isArray(bundle.details.levels));
+    assert.ok(bundle.details.levelsNote.length > 10);
   });
 });

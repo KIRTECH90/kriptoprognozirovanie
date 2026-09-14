@@ -22,7 +22,7 @@ import {
 import { getAsset, quotesFor } from "@/lib/markets.ts";
 import { confidenceLabel, moodOf, regimeLabel } from "@/lib/corridor/drivers.ts";
 import { strengthPhrase, verdictTone } from "@/lib/corridor/verdict.ts";
-import type { ForecastBundle, HorizonBand, Verdict } from "@/lib/corridor/types.ts";
+import type { ForecastBundle, HorizonBand, PriceLevel, Verdict } from "@/lib/corridor/types.ts";
 import { cn } from "@/lib/utils.ts";
 
 const AUTO_KEY = "corridor.autoRefreshMin";
@@ -230,6 +230,7 @@ export function ForecastApp({
           <RangeMeter label="Неделя" low={d.low7} high={d.high7} price={api.price} quote={quote} dec={dec} />
           <RangeMeter label="Месяц" low={d.low30} high={d.high30} price={api.price} quote={quote} dec={dec} />
         </div>
+        <LevelsBlock levels={d.levels} note={d.levelsNote} price={api.price} quote={quote} dec={dec} />
         <p className="mt-4 text-sm leading-relaxed text-fg">{d.marketNote}</p>
         {fg ? <p className="mt-2 text-sm text-muted">Индекс страха и жадности {fg}</p> : null}
 
@@ -516,6 +517,89 @@ function RangeMeter({
         />
       </div>
     </div>
+  );
+}
+
+function LevelsBlock({
+  levels,
+  note,
+  price,
+  quote,
+  dec,
+}: {
+  levels: PriceLevel[];
+  note: string;
+  price: number;
+  quote: string;
+  dec: number;
+}) {
+  if (!levels.length) return null;
+  const resists = levels.filter((l) => l.side === "resistance").sort((a, b) => b.price - a.price);
+  const supports = levels.filter((l) => l.side === "support").sort((a, b) => b.price - a.price);
+  const domainMin = Math.min(price, ...levels.map((l) => l.price));
+  const domainMax = Math.max(price, ...levels.map((l) => l.price));
+  const span = domainMax - domainMin || 1;
+  const x = (v: number) => `${((v - domainMin) / span) * 100}%`;
+
+  return (
+    <div className="mt-5">
+      <p className="text-xs font-medium uppercase tracking-widest text-subtle">Уровни</p>
+      <div className="relative mt-3 h-8">
+        <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-track" />
+        {resists.map((l) => (
+          <span
+            key={`r-${l.price}`}
+            className="absolute top-1/2 h-3 w-px -translate-x-1/2 -translate-y-1/2 bg-event"
+            style={{ left: x(l.price) }}
+          />
+        ))}
+        {supports.map((l) => (
+          <span
+            key={`s-${l.price}`}
+            className="absolute top-1/2 h-3 w-px -translate-x-1/2 -translate-y-1/2 bg-ok"
+            style={{ left: x(l.price) }}
+          />
+        ))}
+        <span
+          className="absolute top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-fg ring-2 ring-surface"
+          style={{ left: x(price) }}
+        />
+      </div>
+      <ul className="mt-3 space-y-1.5">
+        {resists.map((l) => (
+          <LevelRow key={`rr-${l.price}`} level={l} quote={quote} dec={dec} />
+        ))}
+        <li className="flex items-baseline justify-between gap-2 py-1">
+          <span className="text-xs font-medium uppercase tracking-wide text-subtle">Сейчас</span>
+          <span className="font-mono text-sm font-medium tabular-nums">
+            {formatPrice(price, dec)} {quote}
+          </span>
+        </li>
+        {supports.map((l) => (
+          <LevelRow key={`ss-${l.price}`} level={l} quote={quote} dec={dec} />
+        ))}
+      </ul>
+      {note ? <p className="mt-3 text-sm leading-relaxed text-fg">{note}</p> : null}
+    </div>
+  );
+}
+
+function LevelRow({ level, quote, dec }: { level: PriceLevel; quote: string; dec: number }) {
+  const tone = level.side === "support" ? "text-ok" : "text-event";
+  const kind = level.side === "support" ? "Поддержка" : "Сопротивление";
+  return (
+    <li className="flex items-baseline justify-between gap-2">
+      <span className={cn("text-xs font-medium", tone)}>
+        {kind}
+        <span className="font-normal text-subtle"> · {level.label}</span>
+      </span>
+      <span className="text-right">
+        <span className="font-mono text-sm font-medium tabular-nums">
+          {formatPrice(level.price, dec)} {quote}
+        </span>
+        <span className="ml-2 text-xs text-muted">{formatPct(level.distPct)}</span>
+      </span>
+    </li>
   );
 }
 

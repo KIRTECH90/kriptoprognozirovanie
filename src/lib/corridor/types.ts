@@ -115,6 +115,19 @@ export type ForecastResponse = {
   stale: boolean;
 };
 
+export type LevelSide = "support" | "resistance";
+export type LevelStrength = "strong" | "medium" | "weak";
+export type LevelSource = "day" | "week" | "month" | "swing";
+
+export type PriceLevel = {
+  price: number;
+  side: LevelSide;
+  strength: LevelStrength;
+  source: LevelSource;
+  label: string;
+  distPct: number;
+};
+
 export type ForecastDetails = {
   rsi: number;
   atrPct1h: number;
@@ -135,6 +148,8 @@ export type ForecastDetails = {
   high30: number;
   low30: number;
   marketNote: string;
+  levels: PriceLevel[];
+  levelsNote: string;
   w: number;
   newsShift: number;
   newsShock: number;

@@ -20,6 +20,7 @@ import {
 } from "./indicators.ts";
 import { buildCorridors, computeWidthMultiplier, empiricalQuantiles } from "./interval.ts";
 import { buildMarketNote, periodReturns } from "./market-brief.ts";
+import { buildLevelsNote, findLevels, roundLevels } from "./levels.ts";
 import { clip, roundTo } from "./math.ts";
 import { scoreNews } from "./news-score.ts";
 import { regimeFromSets } from "./regime.ts";
@@ -187,6 +188,19 @@ export function runEngine(input: EngineInput): ForecastBundle {
 
   const ts = new Date(input.now).toISOString().replace(/\.\d{3}Z$/, "Z");
   const newsPick = pickHeadlines(newsAgg.items, assetId);
+  const found = findLevels({
+    h1: candles.h1,
+    d1: candles.d1,
+    price: p0,
+    high24: periods.high24,
+    low24: periods.low24,
+    high7: periods.high7,
+    low7: periods.low7,
+    high30: periods.high30,
+    low30: periods.low30,
+  });
+  const levels = roundLevels(found.levels, decimals);
+  const levelsNote = buildLevelsNote(roundTo(p0, decimals), levels);
   const verdict = buildVerdict({
     price: p0,
     expected24: band24.expected,
@@ -254,6 +268,8 @@ export function runEngine(input: EngineInput): ForecastBundle {
         high30: periods.high30,
         fgValue: input.fearGreed?.value ?? null,
       }),
+      levels,
+      levelsNote,
       w,
       newsShift,
       newsShock,
