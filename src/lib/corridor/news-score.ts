@@ -22,7 +22,7 @@ const TYPE_KEYWORDS: [NewsType, string[]][] = [
   ["MACRO", ["cpi", "fomc", "fed", "rates", "nfp", "inflation", "ставка", "инфляц"]],
   ["LISTING", ["listing", "listed", "etf approved", "approved", "листинг"]],
   ["ADOPTION", ["reserve", "treasury", "buys bitcoin", "adoption"]],
-  ["RUMOR", ["reportedly", "sources say", "may", "might", "слух", "может"]],
+  ["RUMOR", ["reportedly", "sources say", "unconfirmed", "слух", "по слухам"]],
 ];
 
 const NEG_MARKERS = [

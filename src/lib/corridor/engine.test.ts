@@ -50,10 +50,9 @@ describe("engine", () => {
     assert.ok(a.horizon_24h.center < a.horizon_24h.high);
     assert.ok(a.horizon_24h.width_pct >= 0.012 - 1e-9);
     assert.ok(a.horizon_48h.width_pct >= 0.018 - 1e-9);
-    assert.ok(a.horizon_24h.low <= a.horizon_24h.expected);
-    assert.ok(a.horizon_24h.expected <= a.horizon_24h.high);
-    assert.ok(a.horizon_48h.low <= a.horizon_48h.expected);
-    assert.ok(a.horizon_48h.expected <= a.horizon_48h.high);
+    assert.equal(a.horizon_24h.expected, a.horizon_24h.center);
+    assert.equal(a.horizon_48h.expected, a.horizon_48h.center);
+    assert.equal(typeof bundle.details.volRatioM15, "number");
     assert.equal(a.drivers.length <= 3, true);
     assert.ok(a.confidence >= 25 && a.confidence <= 88);
     assert.ok(bundle.details.marketNote.length > 20);

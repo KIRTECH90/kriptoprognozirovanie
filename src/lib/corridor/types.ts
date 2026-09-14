@@ -124,6 +124,7 @@ export type PriceLevel = {
   side: LevelSide;
   strength: LevelStrength;
   source: LevelSource;
+  role: "near" | "next";
   label: string;
   distPct: number;
 };
@@ -157,6 +158,9 @@ export type ForecastDetails = {
   fgClass: string | null;
   fgAdj: number;
   volRatio: number;
+  volRatioM15: number;
+  empirical24: boolean;
+  empirical48: boolean;
   bbWidth: number;
   bbPos: number;
   event: boolean;

@@ -53,8 +53,7 @@ export function buildVerdict(opts: {
   const dec = priceDecimals(p0);
   const move24 = p0 > 0 ? (opts.expected24 - p0) / p0 : 0;
   const move48 = p0 > 0 ? (opts.expected48 - p0) / p0 : 0;
-  const raw = Math.exp(opts.muRaw24) - 1;
-  const blend = 0.6 * move24 + 0.4 * raw;
+  const blend = move24;
 
   let score = blend / 0.008;
   score += 0.35 * trendPts(opts.trend1h);

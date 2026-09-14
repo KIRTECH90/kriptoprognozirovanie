@@ -87,27 +87,21 @@ function strengthOf(src: LevelSource, touches: number): LevelStrength {
 
 export function buildLevelsNote(price: number, levels: PriceLevel[]): string {
   const dec = priceDecimals(price);
-  const supports = levels.filter((l) => l.side === "support");
-  const resists = levels.filter((l) => l.side === "resistance");
-  const nearS = supports[0];
-  const nearR = resists[0];
+  const nearS = levels.find((l) => l.side === "support" && l.role === "near") ?? levels.find((l) => l.side === "support");
+  const nearR = levels.find((l) => l.side === "resistance" && l.role === "near") ?? levels.find((l) => l.side === "resistance");
+  const nextS = levels.find((l) => l.side === "support" && l.role === "next");
+  const nextR = levels.find((l) => l.side === "resistance" && l.role === "next");
   if (!nearS && !nearR) return "Чётких уровней рядом сейчас нет.";
   const bits: string[] = [];
   if (nearS) {
-    bits.push(
-      `Ближняя поддержка ${formatPrice(nearS.price, dec)} — ${nearS.label}, ${formatPct(nearS.distPct)}.`,
-    );
+    bits.push(`Ближняя поддержка ${formatPrice(nearS.price, dec)} — ${nearS.label} (${formatPct(nearS.distPct)}).`);
   }
   if (nearR) {
-    bits.push(
-      `Сопротивление ${formatPrice(nearR.price, dec)} — ${nearR.label}, ${formatPct(nearR.distPct)}.`,
-    );
+    bits.push(`Ближнее сопротивление ${formatPrice(nearR.price, dec)} — ${nearR.label} (${formatPct(nearR.distPct)}).`);
   }
-  if (nearS && nearR && price > 0) {
-    const span = (nearR.price - nearS.price) / price;
-    if (span <= 0.02) bits.push("Цена зажата в узком коридоре между ними.");
-    else if (Math.abs(nearR.distPct) < 0.004) bits.push("Цена прямо у сопротивления.");
-    else if (Math.abs(nearS.distPct) < 0.004) bits.push("Цена прямо у поддержки.");
+  bits.push("Это не два коридора: ближний — где цена чаще отбивается сейчас.");
+  if (nextS || nextR) {
+    bits.push("Дальний сработает, только если ближний пробьют.");
   }
   return bits.join(" ");
 }
@@ -151,13 +145,14 @@ export function findLevels(opts: {
     .sort((a, b) => a.price - b.price);
 
   const pick = (list: Raw[], side: LevelSide): PriceLevel[] =>
-    list.slice(0, 2).map((g) => {
+    list.slice(0, 2).map((g, i) => {
       const distPct = (g.price - p0) / p0;
       return {
         price: g.price,
         side,
         strength: strengthOf(g.source, g.touches),
         source: g.source,
+        role: i === 0 ? "near" : "next",
         label: labelOf(g.source, side),
         distPct,
       };

@@ -21,21 +21,19 @@ import {
 import { buildCorridors, computeWidthMultiplier, empiricalQuantiles } from "./interval.ts";
 import { buildMarketNote, periodReturns } from "./market-brief.ts";
 import { buildLevelsNote, findLevels, roundLevels } from "./levels.ts";
-import { clip, roundTo } from "./math.ts";
+import { roundTo } from "./math.ts";
 import { scoreNews } from "./news-score.ts";
 import { regimeFromSets } from "./regime.ts";
 import type { EngineInput, ForecastBundle, HorizonBand, ScoredNews } from "./types.ts";
 import { buildVerdict } from "./verdict.ts";
 import { computeSigmas } from "./volatility.ts";
 import { priceDecimals } from "../format.ts";
-import { getAsset, parseSymbol } from "../markets.ts";
+import { getAsset, parseSymbol, widthCapMult } from "../markets.ts";
 
-function finishHorizon(h: HorizonBand, p0: number, muRaw: number, decimals: number): HorizonBand {
-  const raw = p0 * Math.exp(muRaw);
-  const expected = roundTo(clip(raw, h.low, h.high), decimals);
+function finishHorizon(h: HorizonBand, decimals: number): HorizonBand {
   return {
     center: roundTo(h.center, decimals),
-    expected,
+    expected: roundTo(h.center, decimals),
     low: roundTo(h.low, decimals),
     high: roundTo(h.high, decimals),
     width_pct: roundTo(h.width_pct, WIDTH_DECIMALS),
@@ -53,7 +51,7 @@ function pickHeadlines(items: ScoredNews[], asset: string): {
     const hay = `${n.title} ${n.rawText} ${n.coins.join(" ")}`.toLowerCase();
     return n.coins.some((c) => c.toUpperCase() === id) || keys.some((k) => hay.includes(k));
   });
-  const src = relevant.length ? relevant : items;
+  const src = relevant;
   return {
     scope: relevant.length ? "asset" : "market",
     items: src.slice(0, 4).map((n) => ({
@@ -102,7 +100,9 @@ export function runEngine(input: EngineInput): ForecastBundle {
   const bbWidth = lastFinite(bb.bbWidth);
   const bbPos = lastFinite(bb.bbPos);
   const bbWidthMedian30d = rollingMedian(bb.bbWidth, BB_MEDIAN_DAYS * 24);
-  const vRatio = volRatio(volumesOf(candles.h1));
+  const vRatioH1 = volRatio(volumesOf(candles.h1));
+  const vRatioM15 = candles.m15.length >= 20 ? volRatio(volumesOf(candles.m15), 20) : 1;
+  const vRatio = Math.max(vRatioH1, Number.isFinite(vRatioM15) ? vRatioM15 : 1);
 
   const w = computeWidthMultiplier({
     regime: snap.regime,
@@ -154,18 +154,19 @@ export function runEngine(input: EngineInput): ForecastBundle {
     calibration: input.calibration,
     empirical24: emp24,
     empirical48: emp48,
-    looseCaps: !/^(BTC|ETH)/.test(input.symbol),
+    capMult: widthCapMult(assetId),
   });
 
   const decimals = priceDecimals(p0);
-  const band24 = finishHorizon(h24, p0, centers.muRaw24, decimals);
-  const band48 = finishHorizon(h48, p0, centers.muRaw48, decimals);
+  const band24 = finishHorizon(h24, decimals);
+  const band48 = finishHorizon(h48, decimals);
 
   const conf = confidenceOf({
     regime: snap.regime,
     newsShock,
     tfAligned: snap.tfAligned,
     stale: input.staleCandles,
+    empirical: emp24 ? true : input.skipEmpirical ? undefined : false,
   });
   const topType = newsAgg.items[0]?.type;
   const drivers = buildDrivers({
@@ -276,7 +277,10 @@ export function runEngine(input: EngineInput): ForecastBundle {
       fgValue: input.fearGreed?.value ?? null,
       fgClass: input.fearGreed?.classification ?? null,
       fgAdj: centers.fgAdj,
-      volRatio: vRatio,
+      volRatio: vRatioH1,
+      volRatioM15: Number.isFinite(vRatioM15) ? vRatioM15 : 1,
+      empirical24: Boolean(emp24),
+      empirical48: Boolean(emp48),
       bbWidth: Number.isFinite(bbWidth) ? bbWidth : 0,
       bbPos: Number.isFinite(bbPos) ? bbPos : 0.5,
       event: snap.event,

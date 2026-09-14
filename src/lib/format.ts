@@ -76,3 +76,21 @@ export function fearGreedPhrase(value: number | null, classification: string | n
   else mood = "крайняя жадность";
   return `${value} из 100 · ${mood}`;
 }
+
+export function rsiPhrase(rsi: number): { value: string; detail: string } {
+  const n = Number.isFinite(rsi) ? Math.round(rsi) : 50;
+  if (n <= 30) return { value: String(n), detail: "перепродан" };
+  if (n <= 40) return { value: String(n), detail: "слабый ход" };
+  if (n < 60) return { value: String(n), detail: "спокойно" };
+  if (n < 70) return { value: String(n), detail: "натянут вверх" };
+  return { value: String(n), detail: "перекуплен" };
+}
+
+export function volumePhrase(ratio: number): { value: string; detail: string } {
+  const r = Number.isFinite(ratio) && ratio > 0 ? ratio : 1;
+  const value = `${r.toLocaleString("ru-RU", { maximumFractionDigits: 1, minimumFractionDigits: 1 })}×`;
+  if (r >= 2.2) return { value, detail: "резко выше обычного" };
+  if (r >= 1.4) return { value, detail: "выше обычного" };
+  if (r <= 0.7) return { value, detail: "тише обычного" };
+  return { value, detail: "как обычно" };
+}

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { dedupNews, scoreNews } from "./news-score.ts";
+import { classifyType, dedupNews, scoreNews } from "./news-score.ts";
 import type { NewsItem } from "./types.ts";
 
 function item(title: string, extra: Partial<NewsItem> = {}): NewsItem {
@@ -28,5 +28,13 @@ describe("news scoring", () => {
     assert.equal(agg.items.length, 1);
     const doubled = scoreNews([items[0]!], now);
     assert.ok(Math.abs(agg.newsShock - doubled.newsShock) < 1e-9);
+  });
+
+  it("does not treat ordinary may as a rumor", () => {
+    assert.notEqual(classifyType("Bitcoin may rally after ETF flows", ""), "RUMOR");
+  });
+
+  it("still flags explicit rumor language", () => {
+    assert.equal(classifyType("Bitcoin rally unconfirmed, sources say", "reportedly a large buyer"), "RUMOR");
   });
 });

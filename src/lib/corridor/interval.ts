@@ -219,7 +219,7 @@ export function buildCorridors(opts: {
   calibration: Calibration;
   empirical24: { qLo: number; qHi: number } | null;
   empirical48: { qLo: number; qHi: number } | null;
-  looseCaps?: boolean;
+  capMult?: number;
 }): { h24: HorizonBand; h48: HorizonBand } {
   const fb24 = fallbackQuantiles(opts.sigma24, 24);
   const fb48 = fallbackQuantiles(opts.sigma48, 48);
@@ -236,7 +236,7 @@ export function buildCorridors(opts: {
   q24 = applyAsymmetry(q24.qLo, q24.qHi, opts.rsi, opts.newsShift);
   q48 = applyAsymmetry(q48.qLo, q48.qHi, opts.rsi, opts.newsShift);
   const event = opts.regime === "EVENT";
-  const k = opts.looseCaps ? 1.8 : 1;
+  const k = opts.capMult && opts.capMult > 0 ? opts.capMult : 1;
   const h24 = assembleHorizon({
     p0: opts.p0,
     mu: opts.mu24,

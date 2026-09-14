@@ -78,3 +78,11 @@ export function parseSymbol(symbol: string): { asset: string; quote: string } {
   }
   return { asset: "BTC", quote: "USDT" };
 }
+
+export function widthCapMult(assetId: string): number {
+  const a = assetId.toUpperCase();
+  if (a === "BTC" || a === "ETH") return 1;
+  if (a === "PEPE" || a === "SHIB") return 2.2;
+  if (a === "DOGE") return 1.7;
+  return 1.35;
+}

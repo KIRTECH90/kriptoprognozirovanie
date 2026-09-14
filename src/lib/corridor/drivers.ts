@@ -18,6 +18,7 @@ export function confidenceOf(opts: {
   newsShock: number;
   tfAligned: boolean;
   stale: boolean;
+  empirical?: boolean;
 }): number {
   let conf = CONF_BASE;
   if (opts.regime === "EVENT") conf -= CONF_EVENT;
@@ -26,6 +27,7 @@ export function confidenceOf(opts: {
   if (opts.regime.includes("LOWVOL") && opts.regime !== "EVENT") conf += CONF_LOWVOL;
   if (opts.tfAligned) conf += CONF_TF_ALIGN;
   if (opts.stale) conf -= CONF_STALE;
+  if (opts.empirical === false) conf -= 6;
   return Math.round(clip(conf, CONF_MIN, CONF_MAX));
 }
 

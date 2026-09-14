@@ -41,6 +41,8 @@ describe("levels", () => {
     assert.ok(resists.length >= 1);
     assert.ok(supports.every((l) => l.price < price));
     assert.ok(resists.every((l) => l.price > price));
+    assert.ok(supports.some((l) => l.role === "near"));
+    assert.ok(resists.some((l) => l.role === "near"));
     assert.match(out.note, /поддержк/i);
     assert.match(out.note, /сопротивлени/i);
   });

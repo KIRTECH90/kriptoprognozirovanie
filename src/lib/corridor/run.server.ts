@@ -23,7 +23,7 @@ function filterNews(items: NewsItem[], symbol: string): NewsItem[] {
     const hay = `${n.title} ${n.rawText}`.toLowerCase();
     return keys.some((k) => hay.includes(k));
   });
-  return hit.length ? hit : items.slice(0, 6);
+  return hit;
 }
 
 export async function buildForecast(opts?: {
@@ -57,7 +57,6 @@ export async function buildForecast(opts?: {
     calibration: cache.calibration,
     now: Date.now(),
     source: klines.source,
-    skipEmpirical: true,
   });
   rememberForecast(bundle);
   return bundle;
@@ -106,7 +105,7 @@ export async function runCalibration() {
     d1: klines.candles.d1,
     m15: klines.candles.m15,
   });
-  setCalibration(result.calibration);
+  setCalibration(result.calibration, "BTCUSDT");
   return result;
 }
 

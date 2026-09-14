@@ -9,7 +9,7 @@ type Slot = {
 };
 
 const slots = new Map<string, Slot>();
-let calibration: Calibration = { ...DEFAULT_CALIBRATION };
+const calibrations = new Map<string, Calibration>();
 
 export function getCache(symbol: string): {
   bundle: ForecastBundle | null;
@@ -22,14 +22,14 @@ export function getCache(symbol: string): {
   return {
     bundle: slot?.bundle ?? null,
     lastAt: slot?.lastAt ?? 0,
-    calibration,
+    calibration: calibrations.get(symbol) ?? { ...DEFAULT_CALIBRATION },
     prevSigma24: slot?.prevSigma24 ?? null,
     prevSigma48: slot?.prevSigma48 ?? null,
   };
 }
 
-export function setCalibration(next: Calibration) {
-  calibration = next;
+export function setCalibration(next: Calibration, symbol = "BTCUSDT") {
+  calibrations.set(symbol, next);
 }
 
 export function rememberForecast(bundle: ForecastBundle) {
@@ -52,12 +52,14 @@ export function latestAny(): ForecastBundle | null {
 
 export function metricsFromLogs() {
   const latest = latestAny();
+  const symbol = latest?.api.symbol ?? "BTCUSDT";
+  const cal = calibrations.get(symbol) ?? DEFAULT_CALIBRATION;
   return {
     n: slots.size,
-    coverage_24: calibration.last_coverage_24,
-    coverage_48: calibration.last_coverage_48,
-    median_width_24: latest?.api.horizon_24h.width_pct ?? calibration.last_median_width_24,
-    median_width_48: latest?.api.horizon_48h.width_pct ?? calibration.last_median_width_48,
+    coverage_24: cal.last_coverage_24,
+    coverage_48: cal.last_coverage_48,
+    median_width_24: latest?.api.horizon_24h.width_pct ?? cal.last_median_width_24,
+    median_width_48: latest?.api.horizon_48h.width_pct ?? cal.last_median_width_48,
   };
 }
 

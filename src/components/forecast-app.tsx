@@ -10,6 +10,8 @@ import { getForecastFn } from "@/lib/forecast.ts";
 import { pctFromLog, rangePos } from "@/lib/corridor/market-brief.ts";
 import {
   fearGreedPhrase,
+  rsiPhrase,
+  volumePhrase,
   formatAgo,
   formatClock,
   formatOdds,
@@ -224,6 +226,18 @@ export function ForecastApp({
           <Period label="Сутки" pct={pctFromLog(d.realized24)} />
           <Period label="Неделя" pct={pctFromLog(d.realized7d)} />
           <Period label="Месяц" pct={pctFromLog(d.realized30d)} />
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <IndicatorCell
+            label="RSI"
+            value={rsiPhrase(d.rsi).value}
+            detail={rsiPhrase(d.rsi).detail}
+          />
+          <IndicatorCell
+            label="Объём"
+            value={volumePhrase(Math.max(d.volRatio ?? 1, d.volRatioM15 ?? 1)).value}
+            detail={volumePhrase(Math.max(d.volRatio ?? 1, d.volRatioM15 ?? 1)).detail}
+          />
         </div>
         <div className="mt-4 space-y-3">
           <RangeMeter label="Сутки" low={d.low24} high={d.high24} price={api.price} quote={quote} dec={dec} />
@@ -534,72 +548,100 @@ function LevelsBlock({
   dec: number;
 }) {
   if (!levels.length) return null;
-  const resists = levels.filter((l) => l.side === "resistance").sort((a, b) => b.price - a.price);
-  const supports = levels.filter((l) => l.side === "support").sort((a, b) => b.price - a.price);
-  const domainMin = Math.min(price, ...levels.map((l) => l.price));
-  const domainMax = Math.max(price, ...levels.map((l) => l.price));
+  const nearS = levels.find((l) => l.side === "support" && l.role === "near") ?? levels.find((l) => l.side === "support");
+  const nearR = levels.find((l) => l.side === "resistance" && l.role === "near") ?? levels.find((l) => l.side === "resistance");
+  const nextS = levels.find((l) => l.side === "support" && l.role === "next");
+  const nextR = levels.find((l) => l.side === "resistance" && l.role === "next");
+  const marks = [nearS, nearR, nextS, nextR].filter((x): x is PriceLevel => Boolean(x));
+  const domainMin = Math.min(price, ...marks.map((l) => l.price));
+  const domainMax = Math.max(price, ...marks.map((l) => l.price));
   const span = domainMax - domainMin || 1;
   const x = (v: number) => `${((v - domainMin) / span) * 100}%`;
 
   return (
     <div className="mt-5">
       <p className="text-xs font-medium uppercase tracking-widest text-subtle">Уровни</p>
+      <p className="mt-1 text-xs leading-relaxed text-muted">
+        Ближние — где цена чаще отбивается сейчас. Дальние — следующий рубеж, если ближний пробьют.
+      </p>
       <div className="relative mt-3 h-8">
         <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-track" />
-        {resists.map((l) => (
-          <span
-            key={`r-${l.price}`}
-            className="absolute top-1/2 h-3 w-px -translate-x-1/2 -translate-y-1/2 bg-event"
-            style={{ left: x(l.price) }}
-          />
-        ))}
-        {supports.map((l) => (
-          <span
-            key={`s-${l.price}`}
-            className="absolute top-1/2 h-3 w-px -translate-x-1/2 -translate-y-1/2 bg-ok"
-            style={{ left: x(l.price) }}
-          />
-        ))}
+        {nearR ? (
+          <span className="absolute top-1/2 h-3.5 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-event" style={{ left: x(nearR.price) }} />
+        ) : null}
+        {nearS ? (
+          <span className="absolute top-1/2 h-3.5 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-ok" style={{ left: x(nearS.price) }} />
+        ) : null}
+        {nextR ? (
+          <span className="absolute top-1/2 h-2 w-px -translate-x-1/2 -translate-y-1/2 bg-event/50" style={{ left: x(nextR.price) }} />
+        ) : null}
+        {nextS ? (
+          <span className="absolute top-1/2 h-2 w-px -translate-x-1/2 -translate-y-1/2 bg-ok/50" style={{ left: x(nextS.price) }} />
+        ) : null}
         <span
           className="absolute top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-fg ring-2 ring-surface"
           style={{ left: x(price) }}
         />
       </div>
-      <ul className="mt-3 space-y-1.5">
-        {resists.map((l) => (
-          <LevelRow key={`rr-${l.price}`} level={l} quote={quote} dec={dec} />
-        ))}
-        <li className="flex items-baseline justify-between gap-2 py-1">
-          <span className="text-xs font-medium uppercase tracking-wide text-subtle">Сейчас</span>
-          <span className="font-mono text-sm font-medium tabular-nums">
-            {formatPrice(price, dec)} {quote}
-          </span>
-        </li>
-        {supports.map((l) => (
-          <LevelRow key={`ss-${l.price}`} level={l} quote={quote} dec={dec} />
-        ))}
-      </ul>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        {nearS ? (
+          <LevelCard title="Поддержка" level={nearS} quote={quote} dec={dec} tone="ok" />
+        ) : (
+          <p className="rounded-[var(--radius-sm)] bg-bg-elevated px-3 py-3 text-sm text-muted">Поддержки рядом нет</p>
+        )}
+        {nearR ? (
+          <LevelCard title="Сопротивление" level={nearR} quote={quote} dec={dec} tone="event" />
+        ) : (
+          <p className="rounded-[var(--radius-sm)] bg-bg-elevated px-3 py-3 text-sm text-muted">Сопротивления рядом нет</p>
+        )}
+      </div>
+      {nextS || nextR ? (
+        <p className="mt-2 text-xs text-subtle">
+          Дальше
+          {nextS ? ` поддержка ${formatPrice(nextS.price, dec)}` : ""}
+          {nextS && nextR ? " ·" : ""}
+          {nextR ? ` сопротивление ${formatPrice(nextR.price, dec)}` : ""}
+        </p>
+      ) : null}
       {note ? <p className="mt-3 text-sm leading-relaxed text-fg">{note}</p> : null}
     </div>
   );
 }
 
-function LevelRow({ level, quote, dec }: { level: PriceLevel; quote: string; dec: number }) {
-  const tone = level.side === "support" ? "text-ok" : "text-event";
-  const kind = level.side === "support" ? "Поддержка" : "Сопротивление";
+function LevelCard({
+  title,
+  level,
+  quote,
+  dec,
+  tone,
+}: {
+  title: string;
+  level: PriceLevel;
+  quote: string;
+  dec: number;
+  tone: "ok" | "event";
+}) {
   return (
-    <li className="flex items-baseline justify-between gap-2">
-      <span className={cn("text-xs font-medium", tone)}>
-        {kind}
-        <span className="font-normal text-subtle"> · {level.label}</span>
-      </span>
-      <span className="text-right">
-        <span className="font-mono text-sm font-medium tabular-nums">
-          {formatPrice(level.price, dec)} {quote}
-        </span>
-        <span className="ml-2 text-xs text-muted">{formatPct(level.distPct)}</span>
-      </span>
-    </li>
+    <div className="rounded-[var(--radius-sm)] bg-bg-elevated px-3 py-3">
+      <p className={cn("text-xs font-medium", tone === "ok" ? "text-ok" : "text-event")}>{title}</p>
+      <p className="mt-1 font-mono text-base font-semibold tabular-nums tracking-tight">
+        {formatPrice(level.price, dec)}
+        <span className="ml-1 font-sans text-xs font-medium text-muted">{quote}</span>
+      </p>
+      <p className="mt-0.5 text-xs text-muted">
+        {level.label} · {formatPct(level.distPct)}
+      </p>
+    </div>
+  );
+}
+
+function IndicatorCell({ label, value, detail }: { label: string; value: string; detail: string }) {
+  return (
+    <p className="rounded-[var(--radius-sm)] bg-bg-elevated px-2.5 py-2.5">
+      <span className="block text-xs text-subtle">{label}</span>
+      <span className="font-mono text-sm font-medium tabular-nums">{value}</span>
+      <span className="mt-0.5 block text-xs text-muted">{detail}</span>
+    </p>
   );
 }
 
