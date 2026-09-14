@@ -83,10 +83,10 @@ export const STA_MACD_SCALE = 0.1;
 export const STA_MACD_CLIP = 0.15;
 
 export const MU24_TA = 0.55;
-export const MU24_RET = 0.25;
+export const MU24_RET = 0.08;
 export const MU24_NEWS = 0.2;
 export const MU48_TA = 0.5;
-export const MU48_RET = 0.2;
+export const MU48_RET = 0.06;
 export const MU48_NEWS = 0.3;
 export const FG_MU24 = 0.15;
 export const FG_MU48 = 0.12;
@@ -138,8 +138,10 @@ export const CONF_MAX = 88;
 
 export const CAL_COVERAGE_UNDER = 0.04;
 export const CAL_COVERAGE_OVER = 0.05;
+export const CAL_COVERAGE_BAND = 0.03;
 export const CAL_WIDEN = 0.06;
 export const CAL_NARROW = 0.05;
+export const CAL_MAX_ITERS = 8;
 export const CAL_Z_MIN_24 = 0.95;
 export const CAL_Z_MAX_24 = 1.5;
 export const CAL_STEP_HOURS = 4;

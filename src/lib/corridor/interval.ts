@@ -45,7 +45,7 @@ import {
   Z80,
 } from "./config.ts";
 import { atrWilder, closesOf, ema, highsOf, lowsOf, realizedReturn } from "./indicators.ts";
-import { clip, logReturn, median, quantile, stdev } from "./math.ts";
+import { clip, logReturn, median, quantile } from "./math.ts";
 import { classifyTrend, composeRegime, isEvent, volBucket } from "./regime.ts";
 import type {
   Calibration,
@@ -61,9 +61,11 @@ export function computeWidthMultiplier(input: WidthInputs): number {
   const highvol = input.regime.includes("HIGHVOL");
   const calmRsi = input.rsi >= RSI_CALM_LO && input.rsi <= RSI_CALM_HI;
   const bbQuiet = input.bbWidth <= input.bbWidthMedian30d || input.bbWidthMedian30d === 0;
+  const burst = Boolean(input.burst4h);
 
   if (
     lowvol &&
+    !burst &&
     !input.event &&
     input.newsShock < 0.25 &&
     bbQuiet &&
@@ -83,6 +85,7 @@ export function computeWidthMultiplier(input: WidthInputs): number {
   else if (highvol) w *= W_HIGHVOL_EXPAND;
   if (input.newsShock >= 0.55) w *= 1 + W_NEWS_SHOCK_K * input.newsShock;
   if (input.volRatio >= W_VOL_RATIO_TRIGGER) w *= W_VOL_RATIO_EXPAND;
+  if (burst && !input.event) w *= 1.08;
   if (input.stale) w *= W_STALE_EXPAND;
   return clip(w, W_MIN, W_MAX);
 }
@@ -123,6 +126,27 @@ function lastAtOrBefore(times: number[], t: number): number {
   return ans;
 }
 
+function relatedRegimes(r: Regime): Regime[] {
+  if (r === "EVENT") return ["EVENT"];
+  const m = /^(TREND_UP|TREND_DOWN|RANGE)_(LOWVOL|MIDVOL|HIGHVOL)$/.exec(r);
+  if (!m) return [r];
+  const trend = m[1]!;
+  return (["LOWVOL", "MIDVOL", "HIGHVOL"] as const).map((v) => `${trend}_${v}` as Regime);
+}
+
+function sigmaCcAt(c1: number[], i: number, hours: number): number {
+  let s = 0;
+  let n = 0;
+  for (let k = i; k > i - hours && k >= 1; k--) {
+    if (c1[k]! > 0 && c1[k - 1]! > 0) {
+      const r = Math.log(c1[k]! / c1[k - 1]!);
+      s += r * r;
+      n++;
+    }
+  }
+  return n ? Math.sqrt(s) : 0;
+}
+
 export function empiricalQuantiles(opts: {
   h1: Candle[];
   h4: Candle[];
@@ -131,7 +155,7 @@ export function empiricalQuantiles(opts: {
   sigmaNow: number;
   horizonHours: 24 | 48;
   nowIndexEnd?: number;
-}): { qLo: number; qHi: number; n: number } | null {
+}): { qLo: number; qHi: number; n: number; mixed: boolean } | null {
   const { h1, h4, regimeNow, sigmaNow, horizonHours } = opts;
   if (h1.length < 260) return null;
   const c1 = closesOf(h1);
@@ -146,7 +170,7 @@ export function empiricalQuantiles(opts: {
   const e50_4 = ema(c4, EMA_MID);
   const e200_4 = ema(c4, EMA_SLOW);
 
-  const facts: number[] = [];
+  const samples: { regime: Regime; ret: number }[] = [];
   const step = 4;
   const maxLookback = EMPIRICAL_LOOKBACK_DAYS * 24;
   const start = Math.max(200, h1.length - maxLookback);
@@ -169,12 +193,7 @@ export function empiricalQuantiles(opts: {
     if (!Number.isFinite(nowPct)) continue;
     const vol = volBucket(nowPct, med);
     const ret3 = i >= EVENT_LOOKBACK_HOURS ? logReturn(close, c1[i - EVENT_LOOKBACK_HOURS]!) : 0;
-    const sigFrom = Math.max(1, i - 23);
-    const sigSlice: number[] = [];
-    for (let k = sigFrom; k <= i; k++) {
-      if (c1[k]! > 0 && c1[k - 1]! > 0) sigSlice.push(logReturn(c1[k]!, c1[k - 1]!));
-    }
-    const sig = stdev(sigSlice);
+    const sig = sigmaCcAt(c1, i, 24);
     const event = isEvent({
       newsShock: 0,
       atrPctNow: nowPct,
@@ -184,10 +203,18 @@ export function empiricalQuantiles(opts: {
     });
     const trend4h = classifyTrend(e20_4[trend4hIdx]!, e50_4[trend4hIdx]!, e200_4[trend4hIdx]!, c4[trend4hIdx]!);
     const histRegime = composeRegime(trend4h, vol, event);
-    if (histRegime !== regimeNow && regimeNow !== "EVENT") continue;
-    if (regimeNow === "EVENT" && !event) continue;
     const pH = c1[i + horizonHours]!;
-    if (pH > 0) facts.push(Math.log(pH / close));
+    if (pH > 0) samples.push({ regime: histRegime, ret: Math.log(pH / close) });
+  }
+
+  const exact = samples.filter((s) => s.regime === regimeNow).map((s) => s.ret);
+  const related = relatedRegimes(regimeNow);
+  const mixedPool = samples.filter((s) => related.includes(s.regime)).map((s) => s.ret);
+  let facts = exact;
+  let mixed = false;
+  if (facts.length < EMPIRICAL_MIN_SAMPLES && mixedPool.length >= EMPIRICAL_MIN_SAMPLES) {
+    facts = mixedPool;
+    mixed = true;
   }
   if (facts.length < EMPIRICAL_MIN_SAMPLES) return null;
   const sorted = facts.slice().sort((a, b) => a - b);
@@ -200,7 +227,7 @@ export function empiricalQuantiles(opts: {
   const scale = clip(sigmaNow / (sigmaEmp + 1e-12), EMPIRICAL_SCALE_MIN, EMPIRICAL_SCALE_MAX);
   qLo *= scale;
   qHi *= scale;
-  return { qLo, qHi, n: facts.length };
+  return { qLo, qHi, n: facts.length, mixed };
 }
 
 function enforceSigns(qLo: number, qHi: number): { qLo: number; qHi: number } {
@@ -272,18 +299,25 @@ export function buildCorridors(opts: {
   empirical24: { qLo: number; qHi: number } | null;
   empirical48: { qLo: number; qHi: number } | null;
   capMult?: number;
+  tiltLo?: number;
+  tiltHi?: number;
 }): { h24: HorizonBand; h48: HorizonBand } {
   const fb24 = fallbackQuantiles(opts.sigma24, 24);
   const fb48 = fallbackQuantiles(opts.sigma48, 48);
   let q24 = opts.empirical24 ?? fb24;
   let q48 = opts.empirical48 ?? fb48;
+  const slice = opts.calibration.byRegime?.[opts.regime];
+  const lo24 = (slice?.q_lo_mult_24 ?? opts.calibration.q_lo_mult_24) * (opts.tiltLo ?? 1);
+  const hi24 = (slice?.q_hi_mult_24 ?? opts.calibration.q_hi_mult_24) * (opts.tiltHi ?? 1);
+  const lo48 = (slice?.q_lo_mult_48 ?? opts.calibration.q_lo_mult_48) * (opts.tiltLo ?? 1);
+  const hi48 = (slice?.q_hi_mult_48 ?? opts.calibration.q_hi_mult_48) * (opts.tiltHi ?? 1);
   q24 = {
-    qLo: q24.qLo * opts.calibration.q_lo_mult_24,
-    qHi: q24.qHi * opts.calibration.q_hi_mult_24,
+    qLo: q24.qLo * lo24,
+    qHi: q24.qHi * hi24,
   };
   q48 = {
-    qLo: q48.qLo * opts.calibration.q_lo_mult_48,
-    qHi: q48.qHi * opts.calibration.q_hi_mult_48,
+    qLo: q48.qLo * lo48,
+    qHi: q48.qHi * hi48,
   };
   q24 = applyAsymmetry(q24.qLo, q24.qHi, opts.rsi, opts.newsShift);
   q48 = applyAsymmetry(q48.qLo, q48.qHi, opts.rsi, opts.newsShift);

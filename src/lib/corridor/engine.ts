@@ -4,6 +4,8 @@ import {
   SYMBOL,
   TARGET_COV_24,
   TARGET_COV_48,
+  W_MAX,
+  W_MIN,
   WIDTH_DECIMALS,
 } from "./config.ts";
 import { computeCenters, taScore } from "./center.ts";
@@ -21,14 +23,16 @@ import {
 import { buildCorridors, computeWidthMultiplier, empiricalQuantiles } from "./interval.ts";
 import { buildMarketNote, periodReturns } from "./market-brief.ts";
 import { buildLevelsNote, findLevels, roundLevels } from "./levels.ts";
-import { roundTo } from "./math.ts";
+import { clip, roundTo } from "./math.ts";
 import { scoreNews } from "./news-score.ts";
 import { regimeFromSets } from "./regime.ts";
 import type { EngineInput, ForecastBundle, HorizonBand, ScoredNews } from "./types.ts";
 import { buildVerdict } from "./verdict.ts";
 import { computeSigmas } from "./volatility.ts";
 import { priceDecimals } from "../format.ts";
-import { getAsset, matchesKeywords, parseSymbol, widthCapMult } from "../markets.ts";
+import { getAsset, matchesKeywords, pairTier, parseSymbol, widthCapMult } from "../markets.ts";
+import { newsShiftForCenter } from "./news-center.ts";
+import { derivativesDriver, derivativesTilt } from "./derivatives.ts";
 
 function finishHorizon(h: HorizonBand, decimals: number): HorizonBand {
   return {
@@ -69,7 +73,9 @@ export function runEngine(input: EngineInput): ForecastBundle {
   const p0 = lastClose(candles.h1.length ? candles.h1 : candles.h4);
   const newsAgg = scoreNews(input.news, input.now);
   const newsShock = input.staleNews ? 0 : newsAgg.newsShock;
-  const newsShift = input.staleNews ? 0 : newsAgg.newsShift;
+  const newsShiftRaw = input.staleNews ? 0 : newsAgg.newsShift;
+  const topTypeEarly = newsAgg.items[0]?.type;
+  const newsShift = newsShiftForCenter(topTypeEarly, newsShiftRaw, newsAgg.items[0]?.title);
 
   const snap = regimeFromSets({
     h1: candles.h1,
@@ -103,23 +109,33 @@ export function runEngine(input: EngineInput): ForecastBundle {
   const vRatioH1 = volRatio(volumesOf(candles.h1));
   const vRatioM15 = candles.m15.length >= 20 ? volRatio(volumesOf(candles.m15), 20) : 1;
   const vRatio = Math.max(vRatioH1, Number.isFinite(vRatioM15) ? vRatioM15 : 1);
+  const abs4 = Math.abs(realizedReturn(candles.h1, 4));
+  const abs24 = Math.abs(periods.r24);
+  const burst4h = abs4 > 0.012 && abs4 > 0.5 * Math.max(abs24, 0.01);
+  const tilt = derivativesTilt(input.derivatives);
 
-  const w = computeWidthMultiplier({
-    regime: snap.regime,
-    event: snap.event,
-    newsShock,
-    bbWidth: Number.isFinite(bbWidth) ? bbWidth : 0,
-    bbWidthMedian30d,
-    rsi,
-    trend1h: snap.trend1h,
-    trend4h: snap.trend4h,
-    trend1d: snap.trend1d,
-    volRatio: vRatio,
-    stale: input.staleCandles,
-  });
+  const w = clip(
+    computeWidthMultiplier({
+      regime: snap.regime,
+      event: snap.event,
+      newsShock,
+      bbWidth: Number.isFinite(bbWidth) ? bbWidth : 0,
+      bbWidthMedian30d,
+      rsi,
+      trend1h: snap.trend1h,
+      trend4h: snap.trend4h,
+      trend1d: snap.trend1d,
+      volRatio: vRatio,
+      stale: input.staleCandles,
+      burst4h,
+    }) * tilt.w,
+    W_MIN,
+    W_MAX,
+  );
 
   let emp24: { qLo: number; qHi: number } | null = null;
   let emp48: { qLo: number; qHi: number } | null = null;
+  let empiricalKind: "exact" | "mixed" | "gauss" = "gauss";
   if (candles.h1.length >= 260 && snap.regime !== "EVENT" && !input.skipEmpirical) {
     const e24 = empiricalQuantiles({
       h1: candles.h1,
@@ -139,6 +155,7 @@ export function runEngine(input: EngineInput): ForecastBundle {
     });
     if (e24) emp24 = { qLo: e24.qLo, qHi: e24.qHi };
     if (e48) emp48 = { qLo: e48.qLo, qHi: e48.qHi };
+    if (e24) empiricalKind = e24.mixed ? "mixed" : "exact";
   }
 
   const { h24, h48 } = buildCorridors({
@@ -155,6 +172,8 @@ export function runEngine(input: EngineInput): ForecastBundle {
     empirical24: emp24,
     empirical48: emp48,
     capMult: widthCapMult(assetId),
+    tiltLo: tilt.lo,
+    tiltHi: tilt.hi,
   });
 
   const decimals = priceDecimals(p0);
@@ -186,6 +205,8 @@ export function runEngine(input: EngineInput): ForecastBundle {
     fgClass: input.fearGreed?.classification ?? null,
     headline: newsAgg.items[0]?.title,
   });
+  const derivLine = derivativesDriver(input.derivatives);
+  if (derivLine) drivers.push(derivLine);
 
   const ts = new Date(input.now).toISOString().replace(/\.\d{3}Z$/, "Z");
   const newsPick = pickHeadlines(newsAgg.items, assetId);
@@ -202,7 +223,7 @@ export function runEngine(input: EngineInput): ForecastBundle {
   });
   const levels = roundLevels(found.levels, decimals);
   const levelsNote = buildLevelsNote(roundTo(p0, decimals), levels);
-  const verdict = buildVerdict({
+  let verdict = buildVerdict({
     price: p0,
     expected24: band24.expected,
     expected48: band48.expected,
@@ -222,6 +243,17 @@ export function runEngine(input: EngineInput): ForecastBundle {
     low30: Number.isFinite(periods.low30) ? periods.low30 : p0,
     high30: Number.isFinite(periods.high30) ? periods.high30 : p0,
   });
+  if (pairTier(assetId) === "meme") {
+    verdict = {
+      side: "wait",
+      strength: "weak",
+      label: "Без уклона",
+      reason: "У мемкоина нет уклона — только широкий коридор.",
+      holdHours: 24,
+      target: band24.expected,
+      invalidation: roundTo(p0, decimals),
+    };
+  }
   const api = {
     symbol: input.symbol || SYMBOL,
     ts,
@@ -232,10 +264,7 @@ export function runEngine(input: EngineInput): ForecastBundle {
     confidence: conf,
     drivers,
     verdict,
-    disclaimer:
-      input.calibration.updated_at && input.calibration.last_coverage_24 != null
-        ? "Ширина сверена с историей этой пары. Не обещание цены. Не финансовый совет."
-        : DISCLAIMER,
+    disclaimer: DISCLAIMER,
     stale: input.staleCandles,
   };
 
@@ -284,6 +313,7 @@ export function runEngine(input: EngineInput): ForecastBundle {
       volRatioM15: Number.isFinite(vRatioM15) ? vRatioM15 : 1,
       empirical24: Boolean(emp24),
       empirical48: Boolean(emp48),
+      empiricalKind,
       bbWidth: Number.isFinite(bbWidth) ? bbWidth : 0,
       bbPos: Number.isFinite(bbPos) ? bbPos : 0.5,
       event: snap.event,

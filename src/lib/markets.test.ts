@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { getAsset, matchesKeywords, widthCapMult } from "./markets.ts";
+import { getAsset, matchesKeywords, pairTier, widthCapMult } from "./markets.ts";
 
 describe("market keywords", () => {
   it("does not treat telegram as TON news", () => {
     const keys = getAsset("TON").keywords;
     assert.equal(matchesKeywords("Telegram launches mini apps for traders", keys), false);
-    assert.equal(matchesKeywords("TON dumped after unlock", keys), true);
+    assert.equal(matchesKeywords("TON dumped after unlock", keys), false);
+    assert.equal(matchesKeywords("$TON dumped after unlock", keys), true);
     assert.equal(matchesKeywords("Toncoin listing on a new venue", keys), true);
   });
 
@@ -20,5 +21,8 @@ describe("market keywords", () => {
     assert.equal(widthCapMult("BTC"), 1);
     assert.ok(widthCapMult("PEPE") > 1);
     assert.ok(widthCapMult("SHIB") > 1);
+    assert.equal(pairTier("BTC"), "core");
+    assert.equal(pairTier("SOL"), "major");
+    assert.equal(pairTier("PEPE"), "meme");
   });
 });

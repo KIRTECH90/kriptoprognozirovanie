@@ -64,5 +64,29 @@ describe("engine", () => {
     assert.ok(Number.isFinite(a.verdict.target));
     assert.ok(Array.isArray(bundle.details.levels));
     assert.ok(bundle.details.levelsNote.length > 10);
+    assert.ok(["exact", "mixed", "gauss"].includes(bundle.details.empiricalKind));
+  });
+
+  it("does not lean on a meme pair", () => {
+    const t0 = Date.UTC(2025, 0, 1);
+    const h1 = series(300, t0, 3600_000, 0.000012, 0.02);
+    const h4 = series(120, t0, 4 * 3600_000, 0.000012, 0.03);
+    const d1 = series(80, t0, 86400_000, 0.000012, 0.04);
+    const bundle = runEngine({
+      symbol: "PEPEUSDT",
+      candles: { m15: h1, h1, h4, d1 },
+      news: [],
+      fearGreed: { value: 50, classification: "Neutral" },
+      staleCandles: false,
+      staleNews: true,
+      prevSigma24: null,
+      prevSigma48: null,
+      calibration: DEFAULT_CALIBRATION,
+      now: t0 + 299 * 3600_000,
+      source: "snapshot",
+      skipEmpirical: true,
+    });
+    assert.equal(bundle.api.verdict.side, "wait");
+    assert.match(bundle.api.verdict.reason, /мем/);
   });
 });

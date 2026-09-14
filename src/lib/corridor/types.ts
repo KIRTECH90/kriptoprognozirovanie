@@ -77,6 +77,14 @@ export type Calibration = {
   last_coverage_48: number | null;
   last_median_width_48: number | null;
   updated_at: string | null;
+  byRegime?: Partial<Record<Regime, RegimeCal>>;
+};
+
+export type RegimeCal = {
+  q_lo_mult_24: number;
+  q_hi_mult_24: number;
+  q_lo_mult_48: number;
+  q_hi_mult_48: number;
 };
 
 export type TradeSide = "buy" | "sell" | "wait";
@@ -161,6 +169,7 @@ export type ForecastDetails = {
   volRatioM15: number;
   empirical24: boolean;
   empirical48: boolean;
+  empiricalKind: "exact" | "mixed" | "gauss";
   bbWidth: number;
   bbPos: number;
   event: boolean;
@@ -193,6 +202,7 @@ export type WidthInputs = {
   trend1d: TrendDir;
   volRatio: number;
   stale: boolean;
+  burst4h?: boolean;
 };
 
 export type EngineInput = {
@@ -208,4 +218,5 @@ export type EngineInput = {
   now: number;
   source: "live" | "snapshot";
   skipEmpirical?: boolean;
+  derivatives?: { funding: number | null; basis: number | null } | null;
 };

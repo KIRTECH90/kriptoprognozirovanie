@@ -30,6 +30,12 @@ describe("interval width", () => {
     assert.ok(w >= 0.72);
   });
 
+  it("does not compress LOWVOL when the last 4h already burst", () => {
+    const wCalm = computeWidthMultiplier(calm);
+    const wBurst = computeWidthMultiplier({ ...calm, burst4h: true });
+    assert.ok(wBurst > wCalm, `burst=${wBurst} calm=${wCalm}`);
+  });
+
   it("EVENT expands w vs the calm case and the corridor is wider on the same σ", () => {
     const wCalm = computeWidthMultiplier(calm);
     const wEvent = computeWidthMultiplier({

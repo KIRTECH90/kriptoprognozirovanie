@@ -105,20 +105,73 @@ function createNeonSql(): Promise<Sql> {
   return globalRef.__pgSqlPromise__;
 }
 
+const PGLITE_PARSERS = {
+  [OID_INT8]: Number,
+  [OID_DATE]: identity,
+  [OID_INTERVAL]: identity,
+};
+
+/**
+ * Nitro bundles pglite.mjs without pglite.data / wasm next to it, so the default
+ * `new URL("./pglite.data", import.meta.url)` 404s in `vite preview`. Load the
+ * packaged assets from node_modules instead. Deployed Neon never hits this.
+ */
+async function loadPgliteAssets(): Promise<{
+  pgliteWasmModule?: WebAssembly.Module;
+  initdbWasmModule?: WebAssembly.Module;
+  fsBundle?: Blob;
+}> {
+  try {
+    const { readFile } = await import("node:fs/promises");
+    const { existsSync } = await import("node:fs");
+    const { createRequire } = await import("node:module");
+    const { dirname, join } = await import("node:path");
+    let dist = join(process.cwd(), "node_modules/@electric-sql/pglite/dist");
+    if (!existsSync(join(dist, "pglite.data"))) {
+      const req = createRequire(join(process.cwd(), "package.json"));
+      dist = join(dirname(req.resolve("@electric-sql/pglite/package.json")), "dist");
+    }
+    const [wasm, initdb, data] = await Promise.all([
+      readFile(join(dist, "pglite.wasm")),
+      readFile(join(dist, "initdb.wasm")),
+      readFile(join(dist, "pglite.data")),
+    ]);
+    return {
+      pgliteWasmModule: await WebAssembly.compile(wasm),
+      initdbWasmModule: await WebAssembly.compile(initdb),
+      fsBundle: new Blob([data]),
+    };
+  } catch {
+    return {};
+  }
+}
+
+async function openPglite(): Promise<import("@electric-sql/pglite").PGlite> {
+  const { PGlite } = await import("@electric-sql/pglite");
+  const assets = await loadPgliteAssets();
+  const parsers = PGLITE_PARSERS;
+  const { mkdir } = await import("node:fs/promises");
+  const { join } = await import("node:path");
+  const dataDir = join(process.cwd(), ".data", "pglite");
+  try {
+    await mkdir(dataDir, { recursive: true });
+    const pg = new PGlite({ dataDir, ...assets, parsers });
+    await pg.waitReady;
+    return pg;
+  } catch (err) {
+    console.error("[db] persistent PGLite failed, using memory:", err);
+    const pg = new PGlite({ ...assets, parsers });
+    await pg.waitReady;
+    return pg;
+  }
+}
+
 async function createPgliteSql(): Promise<Sql> {
   // Embedded Postgres, imported on demand so it never loads on the Neon path.
-  // One in-memory instance per process, shared across HMR module instances, so
-  // data survives source edits (it resets on dev-server restart).
+  // File-backed under `.data/pglite` so issued forecasts and calibration survive
+  // a process restart in the live preview. Neon is the durable store on deploy.
   globalRef.__pgliteInstance__ ??= (async () => {
-    const { PGlite } = await import("@electric-sql/pglite");
-    const pg = new PGlite({
-      parsers: {
-        [OID_INT8]: Number,
-        [OID_DATE]: identity,
-        [OID_INTERVAL]: identity,
-      },
-    });
-    await pg.waitReady;
+    const pg = await openPglite();
     await pg.exec(
       "create table if not exists _migrations (name text primary key, applied_at timestamptz not null default now())",
     );
@@ -212,8 +265,10 @@ export async function getPglite(): Promise<import("@electric-sql/pglite").PGlite
 /**
  * Finish DB bootstrap before the server handles traffic.
  *
- * - **PGLite** (preview / no `DATABASE_URL`): open the in-memory DB and apply
+ * - **PGLite** (preview / no `DATABASE_URL`): open the DB and apply
  *   `migrations/*.sql`. Idempotent — concurrent callers share one promise.
+ *   Failure is logged, not thrown: the corridor still renders; journal writes
+ *   retry on the next request.
  * - **Neon**: no-op (pool is created lazily on first query).
  *
  * Vite `configureServer` awaits this at dev startup; production imports of this
@@ -221,7 +276,11 @@ export async function getPglite(): Promise<import("@electric-sql/pglite").PGlite
  */
 export function ensureDbReady(): Promise<void> {
   if (dbSource !== "pglite") return Promise.resolve();
-  return getSql().then(() => undefined);
+  return getSql()
+    .then(() => undefined)
+    .catch((err) => {
+      console.error("[db] PGLite bootstrap failed:", err);
+    });
 }
 
 // Server-only eager start: kick PGLite bootstrap as soon as this module loads in
@@ -230,9 +289,5 @@ const globalBoot = globalThis as typeof globalThis & {
   __pgBootstrapPromise__?: Promise<void>;
 };
 if (typeof window === "undefined" && dbSource === "pglite") {
-  globalBoot.__pgBootstrapPromise__ ??= ensureDbReady().catch((err) => {
-    globalBoot.__pgBootstrapPromise__ = undefined;
-    console.error("[db] PGLite bootstrap failed:", err);
-    throw err;
-  });
+  globalBoot.__pgBootstrapPromise__ ??= ensureDbReady();
 }

@@ -3,12 +3,13 @@ import { useNavigate } from "@tanstack/react-router";
 import { RefreshCw, TrendingDown, TrendingUp, Pause } from "lucide-react";
 import { CorridorBar } from "@/components/corridor-bar.tsx";
 import { HitJournal } from "@/components/hit-journal.tsx";
+import { ModelAudit } from "@/components/model-audit.tsx";
 import { MarketPicker } from "@/components/market-picker.tsx";
 import { SplashOverlay } from "@/components/splash.tsx";
 import { Badge } from "@/components/ui/badge.tsx";
 import { Button } from "@/components/ui/button.tsx";
-import { getForecastFn, getJournalFn } from "@/lib/forecast.ts";
-import type { JournalPayload } from "@/lib/corridor/journal.ts";
+import { getForecastFn, getJournalFn, getModelFn } from "@/lib/forecast.ts";
+import type { LiveJournalPayload, ModelPayload } from "@/lib/corridor/journal.ts";
 import { pctFromLog, rangePos } from "@/lib/corridor/market-brief.ts";
 import {
   fearGreedPhrase,
@@ -23,7 +24,7 @@ import {
   formatTime,
   priceDecimals,
 } from "@/lib/format.ts";
-import { getAsset, quotesFor, widthCapMult } from "@/lib/markets.ts";
+import { getAsset, quotesFor } from "@/lib/markets.ts";
 import { confidenceLabel, moodOf, regimeLabel } from "@/lib/corridor/drivers.ts";
 import { strengthPhrase, verdictTone } from "@/lib/corridor/verdict.ts";
 import type { ForecastBundle, HorizonBand, PriceLevel, Verdict } from "@/lib/corridor/types.ts";
@@ -60,10 +61,13 @@ export function ForecastApp({
   const [nowTs, setNowTs] = useState(0);
   const [hydrated, setHydrated] = useState(false);
   const [splash, setSplash] = useState(true);
-  const [tab, setTab] = useState<"forecast" | "journal">("forecast");
-  const [journal, setJournal] = useState<JournalPayload | null>(null);
+  const [tab, setTab] = useState<"forecast" | "journal" | "model">("forecast");
+  const [journal, setJournal] = useState<LiveJournalPayload | null>(null);
   const [journalBusy, setJournalBusy] = useState(false);
   const [journalErr, setJournalErr] = useState<string | null>(null);
+  const [model, setModel] = useState<ModelPayload | null>(null);
+  const [modelBusy, setModelBusy] = useState(false);
+  const [modelErr, setModelErr] = useState<string | null>(null);
   const reqId = useRef(0);
   const lastFetch = useRef(Date.now());
 
@@ -114,6 +118,7 @@ export function ForecastApp({
       lastFetch.current = Date.now();
       await navigate({ to: "/", search: { asset: nextAsset, quote: nextQuote }, replace: true });
       if (tab === "journal") void loadJournal(nextAsset, nextQuote);
+      if (tab === "model") void loadModel(nextAsset, nextQuote);
     } catch {
       if (id !== reqId.current) return;
       setError(`Пары ${nextAsset}/${nextQuote} сейчас нет. Выберите другую котировку.`);
@@ -147,24 +152,34 @@ export function ForecastApp({
     try {
       const next = await getJournalFn({ data: { symbol: `${nextAsset}${nextQuote}` } });
       setJournal(next);
-      try {
-        const refreshed = await getForecastFn({
-          data: { refresh: true, symbol: `${nextAsset}${nextQuote}` },
-        });
-        setBundle(refreshed);
-      } catch {
-        /* журнал важнее; прогноз подтянется на следующем обновлении */
-      }
     } catch {
-      setJournalErr("Не удалось собрать журнал по этой паре.");
+      setJournalErr("Не удалось открыть журнал по этой паре.");
     } finally {
       setJournalBusy(false);
+    }
+  }
+
+  async function loadModel(nextAsset: string, nextQuote: string) {
+    setModelBusy(true);
+    setModelErr(null);
+    try {
+      const next = await getModelFn({ data: { symbol: `${nextAsset}${nextQuote}` } });
+      setModel(next);
+    } catch {
+      setModelErr("Не удалось прогнать модель по этой паре.");
+    } finally {
+      setModelBusy(false);
     }
   }
 
   function openJournal() {
     setTab("journal");
     void loadJournal(asset, quote);
+  }
+
+  function openModel() {
+    setTab("model");
+    void loadModel(asset, quote);
   }
 
   const api = bundle.api;
@@ -196,7 +211,7 @@ export function ForecastApp({
           Проверить
         </Button>
       </header>
-      <div className="mt-4 grid grid-cols-2 gap-1 rounded-full bg-surface p-1 shadow-[var(--shadow-border)]">
+      <div className="mt-4 grid grid-cols-3 gap-1 rounded-full bg-surface p-1 shadow-[var(--shadow-border)]">
         <button
           type="button"
           onClick={() => setTab("forecast")}
@@ -216,6 +231,16 @@ export function ForecastApp({
           )}
         >
           Журнал
+        </button>
+        <button
+          type="button"
+          onClick={() => openModel()}
+          className={cn(
+            "h-11 rounded-full text-sm font-medium transition-colors duration-150",
+            tab === "model" ? "bg-fg text-bg" : "text-muted",
+          )}
+        >
+          Модель
         </button>
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -259,6 +284,8 @@ export function ForecastApp({
 
       {tab === "journal" ? (
         <HitJournal data={journal} busy={journalBusy} error={journalErr} />
+      ) : tab === "model" ? (
+        <ModelAudit data={model} busy={modelBusy} error={modelErr} />
       ) : (
         <>
       <section
@@ -380,25 +407,6 @@ export function ForecastApp({
         <p className="mt-4 text-sm leading-relaxed text-muted">
           Ориентир — куда клонит модель. Коридор — зона, где цена скорее всего проживёт это время. Если выйдет за край, сценарий не сработал.
         </p>
-        <p className="mt-2 text-sm leading-relaxed text-muted">
-          {d.empirical24
-            ? "Суточный коридор взят из похожих дней этого режима, не из простой нормали."
-            : "Похожих дней этого режима мало — суточный коридор по нормали волы."}
-        </p>
-        {d.calibration.last_coverage_24 != null && d.calibration.updated_at ? (
-          <p className="mt-2 text-sm leading-relaxed text-muted">
-            На истории этой пары сутки закрылись внутри коридора в {Math.round(d.calibration.last_coverage_24 * 100)}% окон. Это сверка на прошлых днях, не лог выданных заранее прогнозов.
-          </p>
-        ) : (
-          <p className="mt-2 text-sm leading-relaxed text-muted">
-            Сверка с историей этой пары ещё идёт — множители ширины пока без поправки.
-          </p>
-        )}
-        {widthCapMult(asset) > 1 ? (
-          <p className="mt-2 text-sm leading-relaxed text-muted">
-            Модель та же, что у биткоина. У этой монеты только потолок ширины выше — отдельной формулы нет.
-          </p>
-        ) : null}
       </section>
 
       <p className="mt-8 text-center text-xs leading-relaxed text-subtle">
@@ -533,7 +541,7 @@ function HorizonCard({
         {flat ? "почти как сейчас" : `${formatPct(move)} от текущей`}
       </p>
       <p className="mt-4 text-sm text-muted">
-        Коридор, внутри которого цена скорее останется. Цель — {formatOdds(band.target_coverage)} похожих дней. Насколько выходит — в журнале.
+        Коридор, внутри которого цена скорее останется. Цель — {formatOdds(band.target_coverage)} похожих дней.
       </p>
       <p className="mt-2 font-mono text-base font-medium tabular-nums tracking-tight sm:text-lg">
         {formatPrice(band.low, dec)}

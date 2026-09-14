@@ -17,26 +17,26 @@ export const QUOTES: { id: string; label: string; hint: string }[] = [
 export const ASSETS: Asset[] = [
   { id: "BTC", name: "Bitcoin", quotes: ["USDT", "USDC", "FDUSD", "EUR", "TRY"], keywords: ["bitcoin", "btc"] },
   { id: "ETH", name: "Ethereum", quotes: ["USDT", "USDC", "FDUSD", "EUR", "TRY", "BTC"], keywords: ["ethereum", "eth"] },
-  { id: "SOL", name: "Solana", quotes: ["USDT", "USDC", "FDUSD", "EUR", "BTC"], keywords: ["solana", "sol"] },
+  { id: "SOL", name: "Solana", quotes: ["USDT", "USDC", "FDUSD", "EUR", "BTC"], keywords: ["solana", "$sol"] },
   { id: "BNB", name: "BNB", quotes: ["USDT", "USDC", "FDUSD", "EUR", "BTC"], keywords: ["bnb", "binance coin"] },
   { id: "XRP", name: "XRP", quotes: ["USDT", "USDC", "EUR", "BTC"], keywords: ["xrp", "ripple"] },
   { id: "DOGE", name: "Dogecoin", quotes: ["USDT", "USDC", "EUR", "BTC"], keywords: ["doge", "dogecoin"] },
-  { id: "TON", name: "Toncoin", quotes: ["USDT", "USDC"], keywords: ["toncoin", "ton"] },
+  { id: "TON", name: "Toncoin", quotes: ["USDT", "USDC"], keywords: ["toncoin", "$ton"] },
   { id: "ADA", name: "Cardano", quotes: ["USDT", "USDC", "EUR", "BTC"], keywords: ["ada", "cardano"] },
   { id: "AVAX", name: "Avalanche", quotes: ["USDT", "USDC", "BTC"], keywords: ["avax", "avalanche"] },
   { id: "LINK", name: "Chainlink", quotes: ["USDT", "USDC", "EUR", "BTC"], keywords: ["link", "chainlink"] },
   { id: "DOT", name: "Polkadot", quotes: ["USDT", "EUR", "BTC"], keywords: ["dot", "polkadot"] },
   { id: "LTC", name: "Litecoin", quotes: ["USDT", "USDC", "EUR", "BTC"], keywords: ["ltc", "litecoin"] },
   { id: "TRX", name: "TRON", quotes: ["USDT", "USDC", "EUR", "BTC"], keywords: ["trx", "tron"] },
-  { id: "SUI", name: "Sui", quotes: ["USDT", "USDC", "BTC"], keywords: ["sui"] },
+  { id: "SUI", name: "Sui", quotes: ["USDT", "USDC", "BTC"], keywords: ["sui network", "$sui"] },
   { id: "ATOM", name: "Cosmos", quotes: ["USDT", "BTC"], keywords: ["atom", "cosmos"] },
-  { id: "NEAR", name: "NEAR", quotes: ["USDT", "BTC"], keywords: ["near"] },
+  { id: "NEAR", name: "NEAR", quotes: ["USDT", "BTC"], keywords: ["near protocol", "$near"] },
   { id: "APT", name: "Aptos", quotes: ["USDT", "BTC"], keywords: ["apt", "aptos"] },
   { id: "ARB", name: "Arbitrum", quotes: ["USDT", "BTC"], keywords: ["arb", "arbitrum"] },
-  { id: "OP", name: "Optimism", quotes: ["USDT", "BTC"], keywords: ["optimism", "op"] },
+  { id: "OP", name: "Optimism", quotes: ["USDT", "BTC"], keywords: ["optimism", "$op"] },
   { id: "INJ", name: "Injective", quotes: ["USDT", "BTC"], keywords: ["inj", "injective"] },
   { id: "FIL", name: "Filecoin", quotes: ["USDT", "BTC"], keywords: ["fil", "filecoin"] },
-  { id: "UNI", name: "Uniswap", quotes: ["USDT", "BTC"], keywords: ["uni", "uniswap"] },
+  { id: "UNI", name: "Uniswap", quotes: ["USDT", "BTC"], keywords: ["uniswap", "$uni"] },
   { id: "AAVE", name: "Aave", quotes: ["USDT", "BTC"], keywords: ["aave"] },
   { id: "PEPE", name: "Pepe", quotes: ["USDT", "USDC"], keywords: ["pepe"] },
   { id: "SHIB", name: "Shiba Inu", quotes: ["USDT", "USDC"], keywords: ["shib", "shiba"] },
@@ -94,10 +94,17 @@ export function parseSymbol(symbol: string): { asset: string; quote: string } {
   return { asset: "BTC", quote: "USDT" };
 }
 
-export function widthCapMult(assetId: string): number {
+export function pairTier(assetId: string): "core" | "major" | "meme" {
   const a = assetId.toUpperCase();
-  if (a === "BTC" || a === "ETH") return 1;
-  if (a === "PEPE" || a === "SHIB") return 2.2;
-  if (a === "DOGE") return 1.7;
+  if (a === "BTC" || a === "ETH") return "core";
+  if (a === "PEPE" || a === "SHIB") return "meme";
+  return "major";
+}
+
+export function widthCapMult(assetId: string): number {
+  const tier = pairTier(assetId);
+  if (tier === "core") return 1;
+  if (tier === "meme") return 2.2;
+  if (assetId.toUpperCase() === "DOGE") return 1.7;
   return 1.35;
 }

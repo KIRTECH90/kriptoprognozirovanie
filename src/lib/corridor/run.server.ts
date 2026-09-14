@@ -1,8 +1,16 @@
 import { DEFAULT_CALIBRATION, SYMBOL, UPDATE_MINUTES } from "./config.ts";
 import { runEngine } from "./engine.ts";
-import { journalFromWalk } from "./journal.ts";
+import { journalFromWalk, liveJournalFromRows, type LiveJournalPayload, type ModelPayload } from "./journal.ts";
 import { walkForwardCalibrate } from "./calibrate.ts";
+import {
+  issueForecast,
+  loadCalibration,
+  loadLiveJournal,
+  saveCalibration,
+  settleIssued,
+} from "./persist.server.ts";
 import { fetchLiveCandles } from "@/lib/data/binance.server.ts";
+import { fetchDerivatives } from "@/lib/data/derivatives.server.ts";
 import { fetchFearGreed } from "@/lib/data/fear-greed.server.ts";
 import { fetchNews } from "@/lib/data/news.server.ts";
 import { getAsset, isKnownSymbol, matchesKeywords, parseSymbol } from "@/lib/markets.ts";
@@ -17,11 +25,10 @@ import {
   setJournalCache,
 } from "@/lib/store/forecasts.server.ts";
 import type { ForecastBundle, ForecastResponse, NewsItem } from "./types.ts";
-import type { JournalPayload } from "./journal.ts";
 
 const TTL_MS = UPDATE_MINUTES * 60_000;
 const CAL_TTL_MS = 6 * 3600_000;
-const journalInflight = new Map<string, Promise<JournalPayload>>();
+const journalInflight = new Map<string, Promise<ModelPayload>>();
 
 function filterNews(items: NewsItem[], symbol: string): NewsItem[] {
   const { asset } = parseSymbol(symbol);
@@ -41,7 +48,7 @@ function scheduleCalibration(symbol: string) {
   const cached = getJournalCache(symbol);
   if (cached && Date.now() - cached.at < TTL_MS) return;
   if (journalInflight.has(symbol)) return;
-  void buildJournal(symbol).catch(() => {
+  void buildModelAudit(symbol).catch(() => {
     /* first paint stays uncalibrated; next refresh retries */
   });
 }
@@ -56,13 +63,32 @@ export async function buildForecast(opts?: {
   }
   const cache = getCache(symbol);
   if (!opts?.forceRefresh && cache.bundle && Date.now() - cache.lastAt < TTL_MS) {
+    try {
+      await issueForecast(cache.bundle);
+    } catch {
+      /* first journal row can wait for a live refresh */
+    }
     return cache.bundle;
   }
 
-  const [klines, news, fg] = await Promise.all([
+  let calibration = cache.calibration;
+  if (!calibration.updated_at) {
+    try {
+      const fromDb = await loadCalibration(symbol);
+      if (fromDb) {
+        setCalibration(fromDb, symbol);
+        calibration = fromDb;
+      }
+    } catch {
+      /* preview DB might still be migrating */
+    }
+  }
+
+  const [klines, news, fg, deriv] = await Promise.all([
     fetchLiveCandles(symbol),
     fetchNews(),
     fetchFearGreed(),
+    fetchDerivatives(symbol),
   ]);
 
   const bundle = runEngine({
@@ -74,11 +100,18 @@ export async function buildForecast(opts?: {
     staleNews: news.staleNews,
     prevSigma24: cache.prevSigma24,
     prevSigma48: cache.prevSigma48,
-    calibration: cache.calibration,
+    calibration,
     now: Date.now(),
     source: klines.source,
+    derivatives: deriv,
   });
   rememberForecast(bundle);
+  try {
+    await issueForecast(bundle);
+    await settleIssued(symbol, klines.candles.h1);
+  } catch {
+    /* journal write is best-effort; corridor still shows */
+  }
   scheduleCalibration(symbol);
   return bundle;
 }
@@ -130,10 +163,31 @@ export async function runCalibration(symbol = "BTCUSDT") {
   });
   setCalibration(result.calibration, symbol);
   expireForecast(symbol);
+  try {
+    await saveCalibration(symbol, result.calibration);
+  } catch {
+    /* memory still holds it */
+  }
   return result;
 }
 
-export async function buildJournal(symbol: string): Promise<JournalPayload> {
+export async function buildLiveJournal(symbol: string): Promise<LiveJournalPayload> {
+  const u = symbol.toUpperCase();
+  if (!isKnownSymbol(u)) throw new Error("UNKNOWN_PAIR");
+  try {
+    const klines = await fetchLiveCandles(u);
+    await settleIssued(u, klines.candles.h1);
+  } catch {
+    /* show whatever is already stored */
+  }
+  try {
+    return await loadLiveJournal(u);
+  } catch {
+    return liveJournalFromRows(u, []);
+  }
+}
+
+export async function buildModelAudit(symbol: string): Promise<ModelPayload> {
   const u = symbol.toUpperCase();
   if (!isKnownSymbol(u)) throw new Error("UNKNOWN_PAIR");
   const cached = getJournalCache(u);
@@ -152,6 +206,11 @@ export async function buildJournal(symbol: string): Promise<JournalPayload> {
     });
     setCalibration(wf.calibration, u);
     expireForecast(u);
+    try {
+      await saveCalibration(u, wf.calibration);
+    } catch {
+      /* memory still holds it */
+    }
     const payload = journalFromWalk(u, wf);
     setJournalCache(u, payload);
     return payload;
@@ -163,5 +222,8 @@ export async function buildJournal(symbol: string): Promise<JournalPayload> {
     journalInflight.delete(u);
   }
 }
+
+/** @deprecated use buildModelAudit */
+export const buildJournal = buildModelAudit;
 
 export { DEFAULT_CALIBRATION };

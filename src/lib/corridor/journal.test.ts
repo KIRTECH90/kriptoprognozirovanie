@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { walkForwardCalibrate } from "./calibrate.ts";
-import { journalFromWalk } from "./journal.ts";
+import { journalFromWalk, liveJournalFromRows } from "./journal.ts";
 import type { Candle } from "./types.ts";
 
 function bounce(n: number, lo: number, hi: number, stepMs: number): Candle[] {
@@ -41,8 +41,37 @@ describe("journal", () => {
     const j = journalFromWalk("BTCUSDT", wf);
     assert.equal(j.symbol, "BTCUSDT");
     assert.ok(j.rows.length >= 4);
+    assert.ok(j.nDays24 >= 4);
     assert.equal(j.target24, 0.75);
     assert.equal(journalFromWalk("BTCUSDT", { ...wf, hours: 500 }).empiricalReady, false);
     assert.equal(journalFromWalk("BTCUSDT", { ...wf, hours: 2000 }).empiricalReady, true);
+  });
+
+  it("live journal starts empty and counts pending separately", () => {
+    const empty = liveJournalFromRows("BTCUSDT", []);
+    assert.equal(empty.nIssued, 0);
+    assert.equal(empty.coverage24, null);
+    const live = liveJournalFromRows("ETHUSDT", [
+      {
+        ts: Date.now(),
+        price: 3000,
+        low24: 2900,
+        high24: 3100,
+        center24: 3000,
+        width24: 0.06,
+        fact24: null,
+        hit24: null,
+        pending24: true,
+        low48: 2800,
+        high48: 3200,
+        fact48: null,
+        hit48: null,
+        pending48: true,
+      },
+    ]);
+    assert.equal(live.nIssued, 1);
+    assert.equal(live.nPending24, 1);
+    assert.equal(live.nSettled24, 0);
+    assert.equal(live.coverage24, null);
   });
 });

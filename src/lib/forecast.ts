@@ -1,5 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
-import type { JournalPayload } from "@/lib/corridor/journal.ts";
+import type { LiveJournalPayload, ModelPayload } from "@/lib/corridor/journal.ts";
 import type { ForecastBundle } from "@/lib/corridor/types.ts";
 
 export const getForecastFn = createServerFn({ method: "POST" })
@@ -14,7 +14,14 @@ export const getForecastFn = createServerFn({ method: "POST" })
 
 export const getJournalFn = createServerFn({ method: "POST" })
   .validator((d: { symbol?: string } | undefined) => d ?? {})
-  .handler(async ({ data }): Promise<JournalPayload> => {
-    const { buildJournal } = await import("@/lib/corridor/run.server.ts");
-    return buildJournal((data?.symbol ?? "BTCUSDT").toUpperCase());
+  .handler(async ({ data }): Promise<LiveJournalPayload> => {
+    const { buildLiveJournal } = await import("@/lib/corridor/run.server.ts");
+    return buildLiveJournal((data?.symbol ?? "BTCUSDT").toUpperCase());
+  });
+
+export const getModelFn = createServerFn({ method: "POST" })
+  .validator((d: { symbol?: string } | undefined) => d ?? {})
+  .handler(async ({ data }): Promise<ModelPayload> => {
+    const { buildModelAudit } = await import("@/lib/corridor/run.server.ts");
+    return buildModelAudit((data?.symbol ?? "BTCUSDT").toUpperCase());
   });
