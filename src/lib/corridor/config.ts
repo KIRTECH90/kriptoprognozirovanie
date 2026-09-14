@@ -36,8 +36,8 @@ export const RUMOR_SEVERITY_MULT = 0.45;
 export const NOISE_SEVERITY_MULT = 0.25;
 
 export const KLINES_15M = 300;
-export const KLINES_1H = 500;
-export const KLINES_4H = 400;
+export const KLINES_1H = 3000;
+export const KLINES_4H = 1000;
 export const KLINES_1D = 400;
 
 export const EMA_FAST = 20;
@@ -154,7 +154,7 @@ export const BINANCE_HOSTS = [
 
 export const FETCH_TIMEOUT_MS = 8000;
 export const DISCLAIMER =
-  "Калиброванный диапазон, не обещание цены. Не финансовый совет.";
+  "Диапазон по волатильности, не обещание цены. Не финансовый совет.";
 
 export const PRICE_DECIMALS = 2;
 export const WIDTH_DECIMALS = 4;

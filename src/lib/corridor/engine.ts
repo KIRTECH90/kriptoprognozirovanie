@@ -28,7 +28,7 @@ import type { EngineInput, ForecastBundle, HorizonBand, ScoredNews } from "./typ
 import { buildVerdict } from "./verdict.ts";
 import { computeSigmas } from "./volatility.ts";
 import { priceDecimals } from "../format.ts";
-import { getAsset, parseSymbol, widthCapMult } from "../markets.ts";
+import { getAsset, matchesKeywords, parseSymbol, widthCapMult } from "../markets.ts";
 
 function finishHorizon(h: HorizonBand, decimals: number): HorizonBand {
   return {
@@ -48,8 +48,8 @@ function pickHeadlines(items: ScoredNews[], asset: string): {
   const keys = getAsset(asset).keywords;
   const id = asset.toUpperCase();
   const relevant = items.filter((n) => {
-    const hay = `${n.title} ${n.rawText} ${n.coins.join(" ")}`.toLowerCase();
-    return n.coins.some((c) => c.toUpperCase() === id) || keys.some((k) => hay.includes(k));
+    const hay = `${n.title} ${n.rawText} ${n.coins.join(" ")}`;
+    return n.coins.some((c) => c.toUpperCase() === id) || matchesKeywords(hay, keys);
   });
   const src = relevant;
   return {
@@ -232,7 +232,10 @@ export function runEngine(input: EngineInput): ForecastBundle {
     confidence: conf,
     drivers,
     verdict,
-    disclaimer: DISCLAIMER,
+    disclaimer:
+      input.calibration.updated_at && input.calibration.last_coverage_24 != null
+        ? "Ширина сверена с историей этой пары. Не обещание цены. Не финансовый совет."
+        : DISCLAIMER,
     stale: input.staleCandles,
   };
 

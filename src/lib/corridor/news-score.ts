@@ -17,7 +17,7 @@ const TYPE_KEYWORDS: [NewsType, string[]][] = [
   ["HACK", ["hack", "exploit", "breach", "drained", "взлом", "хак", "эксплойт"]],
   [
     "REGULATION",
-    ["sec", "ban", "lawsuit", "etf rejected", "запрет", "регулирование", "иск"],
+    ["sec", "etf rejected", "запрет", "регулирование", "иск"],
   ],
   ["MACRO", ["cpi", "fomc", "fed", "rates", "nfp", "inflation", "ставка", "инфляц"]],
   ["LISTING", ["listing", "listed", "etf approved", "approved", "листинг"]],
@@ -111,8 +111,8 @@ export function dedupNews(items: NewsItem[]): NewsItem[] {
 
 function hasKeyword(text: string, kw: string): boolean {
   const t = text.toLowerCase();
-  const k = kw.toLowerCase();
-  if (k.includes(" ")) return t.includes(k);
+  const k = kw.toLowerCase().trim();
+  if (!k) return false;
   const re = new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRe(k)}($|[^\\p{L}\\p{N}])`, "iu");
   return re.test(t);
 }

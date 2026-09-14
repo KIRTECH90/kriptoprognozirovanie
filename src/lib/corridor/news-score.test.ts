@@ -37,4 +37,10 @@ describe("news scoring", () => {
   it("still flags explicit rumor language", () => {
     assert.equal(classifyType("Bitcoin rally unconfirmed, sources say", "reportedly a large buyer"), "RUMOR");
   });
+
+  it("treats SEC as a whole word, not seconds or securities", () => {
+    assert.notEqual(classifyType("Price moved in 30 seconds", ""), "REGULATION");
+    assert.notEqual(classifyType("The securities offering starts Monday", ""), "REGULATION");
+    assert.equal(classifyType("The SEC sues Binance over staking", ""), "REGULATION");
+  });
 });

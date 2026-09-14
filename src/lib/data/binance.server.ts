@@ -43,8 +43,15 @@ async function fetchKlinesFrom(
   interval: string,
   limit: number,
   symbol: string,
+  endTime?: number,
 ): Promise<Candle[]> {
-  const url = `${host}/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
+  const qs = new URLSearchParams({
+    symbol,
+    interval,
+    limit: String(Math.min(1000, limit)),
+  });
+  if (endTime != null) qs.set("endTime", String(endTime));
+  const url = `${host}/api/v3/klines?${qs.toString()}`;
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
   try {
@@ -55,18 +62,45 @@ async function fetchKlinesFrom(
     if (!res.ok) throw new Error(`klines ${interval} ${res.status}`);
     const json: unknown = await res.json();
     const candles = parseBinanceKlines(json);
-    if (candles.length < 10) throw new Error(`klines ${interval} empty`);
+    if (candles.length < 10 && !endTime) throw new Error(`klines ${interval} empty`);
     return candles;
   } finally {
     clearTimeout(t);
   }
 }
 
+async function fetchTfFromHost(host: string, interval: string, limit: number, symbol: string): Promise<Candle[]> {
+  if (limit <= 1000) return fetchKlinesFrom(host, interval, limit, symbol);
+  const chunks: Candle[][] = [];
+  let endTime: number | undefined;
+  let got = 0;
+  while (got < limit) {
+    const n = Math.min(1000, limit - got);
+    const batch = await fetchKlinesFrom(host, interval, n, symbol, endTime);
+    if (batch.length < 10) break;
+    chunks.unshift(batch);
+    got += batch.length;
+    endTime = batch[0]!.openTime - 1;
+    if (batch.length < n) break;
+  }
+  const merged = chunks.flat();
+  const seen = new Set<number>();
+  const out: Candle[] = [];
+  for (const c of merged) {
+    if (seen.has(c.openTime)) continue;
+    seen.add(c.openTime);
+    out.push(c);
+  }
+  out.sort((a, b) => a.openTime - b.openTime);
+  if (out.length < 10) throw new Error(`klines ${interval} empty`);
+  return out;
+}
+
 async function fetchTf(interval: string, limit: number, symbol: string): Promise<Candle[]> {
   let lastErr: unknown;
   for (const host of BINANCE_HOSTS) {
     try {
-      return await fetchKlinesFrom(host, interval, limit, symbol);
+      return await fetchTfFromHost(host, interval, limit, symbol);
     } catch (e) {
       lastErr = e;
     }

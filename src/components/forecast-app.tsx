@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { RefreshCw, TrendingDown, TrendingUp, Pause } from "lucide-react";
 import { CorridorBar } from "@/components/corridor-bar.tsx";
+import { HitJournal } from "@/components/hit-journal.tsx";
 import { MarketPicker } from "@/components/market-picker.tsx";
 import { SplashOverlay } from "@/components/splash.tsx";
 import { Badge } from "@/components/ui/badge.tsx";
 import { Button } from "@/components/ui/button.tsx";
-import { getForecastFn } from "@/lib/forecast.ts";
+import { getForecastFn, getJournalFn } from "@/lib/forecast.ts";
+import type { JournalPayload } from "@/lib/corridor/journal.ts";
 import { pctFromLog, rangePos } from "@/lib/corridor/market-brief.ts";
 import {
   fearGreedPhrase,
@@ -21,7 +23,7 @@ import {
   formatTime,
   priceDecimals,
 } from "@/lib/format.ts";
-import { getAsset, quotesFor } from "@/lib/markets.ts";
+import { getAsset, quotesFor, widthCapMult } from "@/lib/markets.ts";
 import { confidenceLabel, moodOf, regimeLabel } from "@/lib/corridor/drivers.ts";
 import { strengthPhrase, verdictTone } from "@/lib/corridor/verdict.ts";
 import type { ForecastBundle, HorizonBand, PriceLevel, Verdict } from "@/lib/corridor/types.ts";
@@ -58,6 +60,10 @@ export function ForecastApp({
   const [nowTs, setNowTs] = useState(0);
   const [hydrated, setHydrated] = useState(false);
   const [splash, setSplash] = useState(true);
+  const [tab, setTab] = useState<"forecast" | "journal">("forecast");
+  const [journal, setJournal] = useState<JournalPayload | null>(null);
+  const [journalBusy, setJournalBusy] = useState(false);
+  const [journalErr, setJournalErr] = useState<string | null>(null);
   const reqId = useRef(0);
   const lastFetch = useRef(Date.now());
 
@@ -107,6 +113,7 @@ export function ForecastApp({
       setBundle(next);
       lastFetch.current = Date.now();
       await navigate({ to: "/", search: { asset: nextAsset, quote: nextQuote }, replace: true });
+      if (tab === "journal") void loadJournal(nextAsset, nextQuote);
     } catch {
       if (id !== reqId.current) return;
       setError(`Пары ${nextAsset}/${nextQuote} сейчас нет. Выберите другую котировку.`);
@@ -132,6 +139,32 @@ export function ForecastApp({
     } catch {
       /* ignore */
     }
+  }
+
+  async function loadJournal(nextAsset: string, nextQuote: string) {
+    setJournalBusy(true);
+    setJournalErr(null);
+    try {
+      const next = await getJournalFn({ data: { symbol: `${nextAsset}${nextQuote}` } });
+      setJournal(next);
+      try {
+        const refreshed = await getForecastFn({
+          data: { refresh: true, symbol: `${nextAsset}${nextQuote}` },
+        });
+        setBundle(refreshed);
+      } catch {
+        /* журнал важнее; прогноз подтянется на следующем обновлении */
+      }
+    } catch {
+      setJournalErr("Не удалось собрать журнал по этой паре.");
+    } finally {
+      setJournalBusy(false);
+    }
+  }
+
+  function openJournal() {
+    setTab("journal");
+    void loadJournal(asset, quote);
   }
 
   const api = bundle.api;
@@ -163,6 +196,28 @@ export function ForecastApp({
           Проверить
         </Button>
       </header>
+      <div className="mt-4 grid grid-cols-2 gap-1 rounded-full bg-surface p-1 shadow-[var(--shadow-border)]">
+        <button
+          type="button"
+          onClick={() => setTab("forecast")}
+          className={cn(
+            "h-11 rounded-full text-sm font-medium transition-colors duration-150",
+            tab === "forecast" ? "bg-fg text-bg" : "text-muted",
+          )}
+        >
+          Прогноз
+        </button>
+        <button
+          type="button"
+          onClick={() => openJournal()}
+          className={cn(
+            "h-11 rounded-full text-sm font-medium transition-colors duration-150",
+            tab === "journal" ? "bg-fg text-bg" : "text-muted",
+          )}
+        >
+          Журнал
+        </button>
+      </div>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {AUTO_OPTS.map((n) => (
           <button
@@ -202,6 +257,10 @@ export function ForecastApp({
 
       {error ? <p className="mt-4 text-sm text-event">{error}</p> : null}
 
+      {tab === "journal" ? (
+        <HitJournal data={journal} busy={journalBusy} error={journalErr} />
+      ) : (
+        <>
       <section
         className={cn(
           "mt-6 rounded-[var(--radius-xl)] bg-surface p-5 shadow-[var(--shadow-border)] transition-opacity duration-150",
@@ -321,11 +380,32 @@ export function ForecastApp({
         <p className="mt-4 text-sm leading-relaxed text-muted">
           Ориентир — куда клонит модель. Коридор — зона, где цена скорее всего проживёт это время. Если выйдет за край, сценарий не сработал.
         </p>
+        <p className="mt-2 text-sm leading-relaxed text-muted">
+          {d.empirical24
+            ? "Суточный коридор взят из похожих дней этого режима, не из простой нормали."
+            : "Похожих дней этого режима мало — суточный коридор по нормали волы."}
+        </p>
+        {d.calibration.last_coverage_24 != null && d.calibration.updated_at ? (
+          <p className="mt-2 text-sm leading-relaxed text-muted">
+            На истории этой пары сутки закрылись внутри коридора в {Math.round(d.calibration.last_coverage_24 * 100)}% окон. Это сверка на прошлых днях, не лог выданных заранее прогнозов.
+          </p>
+        ) : (
+          <p className="mt-2 text-sm leading-relaxed text-muted">
+            Сверка с историей этой пары ещё идёт — множители ширины пока без поправки.
+          </p>
+        )}
+        {widthCapMult(asset) > 1 ? (
+          <p className="mt-2 text-sm leading-relaxed text-muted">
+            Модель та же, что у биткоина. У этой монеты только потолок ширины выше — отдельной формулы нет.
+          </p>
+        ) : null}
       </section>
 
       <p className="mt-8 text-center text-xs leading-relaxed text-subtle">
         {api.disclaimer} Оценка модели, решение за вами.
       </p>
+        </>
+      )}
     </div>
   );
 }
@@ -356,7 +436,7 @@ function VerdictPanel({
         dim && "opacity-50",
       )}
     >
-      <p className="text-xs font-medium uppercase tracking-widest text-subtle">Вердикт</p>
+      <p className="text-xs font-medium uppercase tracking-widest text-subtle">Уклон</p>
       <div className="mt-2 flex items-center justify-between gap-3">
         <p className={cn("flex items-center gap-2 text-3xl font-semibold tracking-tight", color)}>
           <Icon className="size-7" strokeWidth={2.2} />
@@ -376,7 +456,7 @@ function VerdictPanel({
       ) : (
         <div className="mt-4 grid grid-cols-2 gap-2">
           <div className="rounded-[var(--radius-sm)] bg-surface px-3 py-3">
-            <p className="text-xs text-subtle">Фиксировать прибыль</p>
+            <p className="text-xs text-subtle">Ориентир</p>
             <p className="mt-1 font-semibold tabular-nums">
               <span className="font-mono text-2xl">{verdict.holdHours}</span>
               <span className="ml-1 text-sm text-muted">ч</span>
@@ -387,7 +467,7 @@ function VerdictPanel({
             <p className="mt-0.5 text-xs text-muted">{formatPct(targetMove)}</p>
           </div>
           <div className="rounded-[var(--radius-sm)] bg-surface px-3 py-3">
-            <p className="text-xs text-subtle">Идея не сработала</p>
+            <p className="text-xs text-subtle">Коридор ломается</p>
             <p className="mt-1 text-sm font-medium">
               {verdict.side === "buy" ? "ниже" : "выше"}
             </p>
@@ -453,7 +533,7 @@ function HorizonCard({
         {flat ? "почти как сейчас" : `${formatPct(move)} от текущей`}
       </p>
       <p className="mt-4 text-sm text-muted">
-        Коридор, внутри которого цена скорее останется · в {formatOdds(band.target_coverage)} похожих дней так и было
+        Коридор, внутри которого цена скорее останется. Цель — {formatOdds(band.target_coverage)} похожих дней. Насколько выходит — в журнале.
       </p>
       <p className="mt-2 font-mono text-base font-medium tabular-nums tracking-tight sm:text-lg">
         {formatPrice(band.low, dec)}

@@ -21,7 +21,7 @@ export const ASSETS: Asset[] = [
   { id: "BNB", name: "BNB", quotes: ["USDT", "USDC", "FDUSD", "EUR", "BTC"], keywords: ["bnb", "binance coin"] },
   { id: "XRP", name: "XRP", quotes: ["USDT", "USDC", "EUR", "BTC"], keywords: ["xrp", "ripple"] },
   { id: "DOGE", name: "Dogecoin", quotes: ["USDT", "USDC", "EUR", "BTC"], keywords: ["doge", "dogecoin"] },
-  { id: "TON", name: "Toncoin", quotes: ["USDT", "USDC"], keywords: ["ton", "toncoin", "telegram"] },
+  { id: "TON", name: "Toncoin", quotes: ["USDT", "USDC"], keywords: ["toncoin", "ton"] },
   { id: "ADA", name: "Cardano", quotes: ["USDT", "USDC", "EUR", "BTC"], keywords: ["ada", "cardano"] },
   { id: "AVAX", name: "Avalanche", quotes: ["USDT", "USDC", "BTC"], keywords: ["avax", "avalanche"] },
   { id: "LINK", name: "Chainlink", quotes: ["USDT", "USDC", "EUR", "BTC"], keywords: ["link", "chainlink"] },
@@ -33,7 +33,7 @@ export const ASSETS: Asset[] = [
   { id: "NEAR", name: "NEAR", quotes: ["USDT", "BTC"], keywords: ["near"] },
   { id: "APT", name: "Aptos", quotes: ["USDT", "BTC"], keywords: ["apt", "aptos"] },
   { id: "ARB", name: "Arbitrum", quotes: ["USDT", "BTC"], keywords: ["arb", "arbitrum"] },
-  { id: "OP", name: "Optimism", quotes: ["USDT", "BTC"], keywords: ["optimism", " op "] },
+  { id: "OP", name: "Optimism", quotes: ["USDT", "BTC"], keywords: ["optimism", "op"] },
   { id: "INJ", name: "Injective", quotes: ["USDT", "BTC"], keywords: ["inj", "injective"] },
   { id: "FIL", name: "Filecoin", quotes: ["USDT", "BTC"], keywords: ["fil", "filecoin"] },
   { id: "UNI", name: "Uniswap", quotes: ["USDT", "BTC"], keywords: ["uni", "uniswap"] },
@@ -41,6 +41,21 @@ export const ASSETS: Asset[] = [
   { id: "PEPE", name: "Pepe", quotes: ["USDT", "USDC"], keywords: ["pepe"] },
   { id: "SHIB", name: "Shiba Inu", quotes: ["USDT", "USDC"], keywords: ["shib", "shiba"] },
 ];
+
+function escapeRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Whole-token match so "ton" does not hit telegram and "sol" does not hit sold. */
+export function matchesKeywords(text: string, keywords: string[]): boolean {
+  const hay = text.toLowerCase();
+  return keywords.some((kw) => {
+    const k = kw.toLowerCase().trim();
+    if (!k) return false;
+    const re = new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRe(k)}($|[^\\p{L}\\p{N}])`, "iu");
+    return re.test(hay);
+  });
+}
 
 export function getAsset(id: string): Asset {
   return ASSETS.find((a) => a.id === id) ?? ASSETS[0]!;

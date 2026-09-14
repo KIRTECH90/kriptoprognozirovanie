@@ -1,29 +1,49 @@
 import { DEFAULT_CALIBRATION, SYMBOL, UPDATE_MINUTES } from "./config.ts";
 import { runEngine } from "./engine.ts";
+import { journalFromWalk } from "./journal.ts";
 import { walkForwardCalibrate } from "./calibrate.ts";
 import { fetchLiveCandles } from "@/lib/data/binance.server.ts";
 import { fetchFearGreed } from "@/lib/data/fear-greed.server.ts";
 import { fetchNews } from "@/lib/data/news.server.ts";
-import { getAsset, isKnownSymbol, parseSymbol } from "@/lib/markets.ts";
+import { getAsset, isKnownSymbol, matchesKeywords, parseSymbol } from "@/lib/markets.ts";
 import {
+  expireForecast,
   getCache,
+  getJournalCache,
   latestAny,
   metricsFromLogs,
   rememberForecast,
   setCalibration,
+  setJournalCache,
 } from "@/lib/store/forecasts.server.ts";
 import type { ForecastBundle, ForecastResponse, NewsItem } from "./types.ts";
+import type { JournalPayload } from "./journal.ts";
 
 const TTL_MS = UPDATE_MINUTES * 60_000;
+const CAL_TTL_MS = 6 * 3600_000;
+const journalInflight = new Map<string, Promise<JournalPayload>>();
 
 function filterNews(items: NewsItem[], symbol: string): NewsItem[] {
   const { asset } = parseSymbol(symbol);
   const keys = getAsset(asset).keywords;
-  const hit = items.filter((n) => {
-    const hay = `${n.title} ${n.rawText}`.toLowerCase();
-    return keys.some((k) => hay.includes(k));
+  return items.filter((n) => matchesKeywords(`${n.title} ${n.rawText}`, keys));
+}
+
+function calibrationFresh(symbol: string): boolean {
+  const cal = getCache(symbol).calibration;
+  if (!cal.updated_at || cal.last_coverage_24 == null) return false;
+  const t = Date.parse(cal.updated_at);
+  return Number.isFinite(t) && Date.now() - t < CAL_TTL_MS;
+}
+
+function scheduleCalibration(symbol: string) {
+  if (calibrationFresh(symbol)) return;
+  const cached = getJournalCache(symbol);
+  if (cached && Date.now() - cached.at < TTL_MS) return;
+  if (journalInflight.has(symbol)) return;
+  void buildJournal(symbol).catch(() => {
+    /* first paint stays uncalibrated; next refresh retries */
   });
-  return hit;
 }
 
 export async function buildForecast(opts?: {
@@ -59,6 +79,7 @@ export async function buildForecast(opts?: {
     source: klines.source,
   });
   rememberForecast(bundle);
+  scheduleCalibration(symbol);
   return bundle;
 }
 
@@ -97,16 +118,50 @@ export function metricsPayload() {
   };
 }
 
-export async function runCalibration() {
-  const klines = await fetchLiveCandles("BTCUSDT");
+export async function runCalibration(symbol = "BTCUSDT") {
+  const klines = await fetchLiveCandles(symbol);
   const result = walkForwardCalibrate({
     h1: klines.candles.h1,
     h4: klines.candles.h4,
     d1: klines.candles.d1,
     m15: klines.candles.m15,
+    symbol,
+    stepHours: 24,
   });
-  setCalibration(result.calibration, "BTCUSDT");
+  setCalibration(result.calibration, symbol);
+  expireForecast(symbol);
   return result;
+}
+
+export async function buildJournal(symbol: string): Promise<JournalPayload> {
+  const u = symbol.toUpperCase();
+  if (!isKnownSymbol(u)) throw new Error("UNKNOWN_PAIR");
+  const cached = getJournalCache(u);
+  if (cached && Date.now() - cached.at < TTL_MS) return cached.payload;
+  const inflight = journalInflight.get(u);
+  if (inflight) return inflight;
+  const job = (async () => {
+    const klines = await fetchLiveCandles(u);
+    const wf = walkForwardCalibrate({
+      h1: klines.candles.h1,
+      h4: klines.candles.h4,
+      d1: klines.candles.d1,
+      m15: klines.candles.m15,
+      symbol: u,
+      stepHours: 24,
+    });
+    setCalibration(wf.calibration, u);
+    expireForecast(u);
+    const payload = journalFromWalk(u, wf);
+    setJournalCache(u, payload);
+    return payload;
+  })();
+  journalInflight.set(u, job);
+  try {
+    return await job;
+  } finally {
+    journalInflight.delete(u);
+  }
 }
 
 export { DEFAULT_CALIBRATION };

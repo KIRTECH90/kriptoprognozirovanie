@@ -1,4 +1,5 @@
 import { DEFAULT_CALIBRATION } from "@/lib/corridor/config.ts";
+import type { JournalPayload } from "@/lib/corridor/journal.ts";
 import type { Calibration, ForecastBundle } from "@/lib/corridor/types.ts";
 
 type Slot = {
@@ -10,6 +11,7 @@ type Slot = {
 
 const slots = new Map<string, Slot>();
 const calibrations = new Map<string, Calibration>();
+const journals = new Map<string, { payload: JournalPayload; at: number }>();
 
 export function getCache(symbol: string): {
   bundle: ForecastBundle | null;
@@ -30,6 +32,11 @@ export function getCache(symbol: string): {
 
 export function setCalibration(next: Calibration, symbol = "BTCUSDT") {
   calibrations.set(symbol, next);
+}
+
+export function expireForecast(symbol: string) {
+  const slot = slots.get(symbol);
+  if (slot) slot.lastAt = 0;
 }
 
 export function rememberForecast(bundle: ForecastBundle) {
@@ -65,4 +72,12 @@ export function metricsFromLogs() {
 
 export function listLogs() {
   return [...slots.values()].map((s) => s.bundle.api);
+}
+
+export function getJournalCache(symbol: string): { payload: JournalPayload; at: number } | null {
+  return journals.get(symbol) ?? null;
+}
+
+export function setJournalCache(symbol: string, payload: JournalPayload) {
+  journals.set(symbol, { payload, at: Date.now() });
 }

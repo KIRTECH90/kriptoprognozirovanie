@@ -41,7 +41,7 @@ describe("verdict", () => {
   it("waits when the point forecast is flat and trends conflict", () => {
     const out = v({});
     assert.equal(out.side, "wait");
-    assert.equal(out.label, "Подождать");
+    assert.equal(out.label, "Без уклона");
   });
 
   it("buys when expected, raw drift and trends all point up", () => {
@@ -58,7 +58,7 @@ describe("verdict", () => {
       high30: 120,
     });
     assert.equal(out.side, "buy");
-    assert.equal(out.label, "Покупать");
+    assert.equal(out.label, "Вверх");
     assert.ok(out.holdHours === 24 || out.holdHours === 48);
     assert.ok(out.target > 100);
     assert.equal(out.invalidation, 97);
@@ -78,7 +78,7 @@ describe("verdict", () => {
       high30: 110,
     });
     assert.equal(out.side, "sell");
-    assert.equal(out.label, "Продавать");
+    assert.equal(out.label, "Вниз");
     assert.ok(out.target < 100);
     assert.equal(out.invalidation, 103);
   });

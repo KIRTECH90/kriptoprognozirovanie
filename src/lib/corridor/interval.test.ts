@@ -5,7 +5,9 @@ import { computeCenters, shrinkMu } from "./center.ts";
 import {
   assembleHorizon,
   computeWidthMultiplier,
+  empiricalQuantiles,
 } from "./interval.ts";
+import type { Candle } from "./types.ts";
 
 const calm: Parameters<typeof computeWidthMultiplier>[0] = {
   regime: "RANGE_LOWVOL",
@@ -86,6 +88,35 @@ describe("interval width", () => {
     assert.ok(band.low < band.center && band.center < band.high);
     assert.ok(band.width_pct + 1e-12 >= 0.012);
     assert.ok(band.low < p0 * 0.999 || band.high > p0 * 1.001);
+  });
+
+  it("empirical quantiles stay off on short history", () => {
+    const t0 = Date.UTC(2025, 0, 1);
+    const mk = (n: number, step: number): Candle[] => {
+      const out: Candle[] = [];
+      let p = 100;
+      for (let i = 0; i < n; i++) {
+        p *= Math.exp(Math.sin(i / 9) * 0.004);
+        out.push({
+          openTime: t0 + i * step,
+          open: p,
+          high: p * 1.002,
+          low: p * 0.998,
+          close: p,
+          volume: 10,
+        });
+      }
+      return out;
+    };
+    const q = empiricalQuantiles({
+      h1: mk(300, 3600_000),
+      h4: mk(80, 4 * 3600_000),
+      d1: mk(40, 86400_000),
+      regimeNow: "RANGE_MIDVOL",
+      sigmaNow: 0.02,
+      horizonHours: 24,
+    });
+    assert.equal(q, null);
   });
 });
 

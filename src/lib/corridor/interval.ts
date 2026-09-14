@@ -1,10 +1,15 @@
 import {
+  ATR_MEDIAN_DAYS,
+  ATR_PERIOD,
   ASYM_HI_K,
   ASYM_LO_K,
   ASYM_NEWS_HI_K,
   ASYM_NEWS_LO_K,
   ASYM_RSI_CLIP,
   ASYM_RSI_DIV,
+  EMA_FAST,
+  EMA_MID,
+  EMA_SLOW,
   EMPIRICAL_LOOKBACK_DAYS,
   EMPIRICAL_MAD_FACTOR,
   EMPIRICAL_MIN_SAMPLES,
@@ -14,6 +19,7 @@ import {
   EMPIRICAL_Q_LO_48,
   EMPIRICAL_SCALE_MAX,
   EMPIRICAL_SCALE_MIN,
+  EVENT_LOOKBACK_HOURS,
   MAX_WIDTH_24_EVENT,
   MAX_WIDTH_24_NORMAL,
   MAX_WIDTH_48_EVENT,
@@ -38,9 +44,9 @@ import {
   Z75,
   Z80,
 } from "./config.ts";
-import { realizedReturn } from "./indicators.ts";
-import { clip, median, quantile } from "./math.ts";
-import { composeRegime, regimeFromSets } from "./regime.ts";
+import { atrWilder, closesOf, ema, highsOf, lowsOf, realizedReturn } from "./indicators.ts";
+import { clip, logReturn, median, quantile, stdev } from "./math.ts";
+import { classifyTrend, composeRegime, isEvent, volBucket } from "./regime.ts";
 import type {
   Calibration,
   Candle,
@@ -103,6 +109,20 @@ export function fallbackQuantiles(
   return { qLo: -z * sigma, qHi: z * sigma };
 }
 
+function lastAtOrBefore(times: number[], t: number): number {
+  let lo = 0;
+  let hi = times.length - 1;
+  let ans = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (times[mid]! <= t) {
+      ans = mid;
+      lo = mid + 1;
+    } else hi = mid - 1;
+  }
+  return ans;
+}
+
 export function empiricalQuantiles(opts: {
   h1: Candle[];
   h4: Candle[];
@@ -112,30 +132,62 @@ export function empiricalQuantiles(opts: {
   horizonHours: 24 | 48;
   nowIndexEnd?: number;
 }): { qLo: number; qHi: number; n: number } | null {
-  const { h1, h4, d1, regimeNow, sigmaNow, horizonHours } = opts;
+  const { h1, h4, regimeNow, sigmaNow, horizonHours } = opts;
+  if (h1.length < 260) return null;
+  const c1 = closesOf(h1);
+  const e20 = ema(c1, EMA_FAST);
+  const e50 = ema(c1, EMA_MID);
+  const e200 = ema(c1, EMA_SLOW);
+  const atr1 = atrWilder(highsOf(h1), lowsOf(h1), c1, ATR_PERIOD);
+  const atrPct = atr1.map((a, i) => (c1[i]! > 0 && Number.isFinite(a) ? a / c1[i]! : NaN));
+  const c4 = closesOf(h4);
+  const t4 = h4.map((c) => c.openTime);
+  const e20_4 = ema(c4, EMA_FAST);
+  const e50_4 = ema(c4, EMA_MID);
+  const e200_4 = ema(c4, EMA_SLOW);
+
   const facts: number[] = [];
   const step = 4;
   const maxLookback = EMPIRICAL_LOOKBACK_DAYS * 24;
   const start = Math.max(200, h1.length - maxLookback);
   const last = h1.length - 1 - horizonHours;
   for (let i = start; i <= last; i += step) {
-    const prefixH1 = h1.slice(0, i + 1);
-    const t = h1[i]!.openTime;
-    const prefixH4 = h4.filter((c) => c.openTime <= t);
-    const prefixD1 = d1.filter((c) => c.openTime <= t);
-    if (prefixH4.length < 60 || prefixD1.length < 40) continue;
-    const snap = regimeFromSets({
-      h1: prefixH1,
-      h4: prefixH4,
-      d1: prefixD1,
+    const close = c1[i]!;
+    if (!(close > 0)) continue;
+    if (![e20[i], e50[i], e200[i]].every(Number.isFinite)) continue;
+    const trend4hIdx = lastAtOrBefore(t4, h1[i]!.openTime);
+    if (trend4hIdx < 60) continue;
+    if (![e20_4[trend4hIdx], e50_4[trend4hIdx], e200_4[trend4hIdx], c4[trend4hIdx]].every(Number.isFinite)) {
+      continue;
+    }
+    const from = Math.max(0, i - ATR_MEDIAN_DAYS * 24 + 1);
+    const window: number[] = [];
+    for (let k = from; k <= i; k++) if (Number.isFinite(atrPct[k])) window.push(atrPct[k]!);
+    if (window.length < 50) continue;
+    const med = median(window);
+    const nowPct = atrPct[i]!;
+    if (!Number.isFinite(nowPct)) continue;
+    const vol = volBucket(nowPct, med);
+    const ret3 = i >= EVENT_LOOKBACK_HOURS ? logReturn(close, c1[i - EVENT_LOOKBACK_HOURS]!) : 0;
+    const sigFrom = Math.max(1, i - 23);
+    const sigSlice: number[] = [];
+    for (let k = sigFrom; k <= i; k++) {
+      if (c1[k]! > 0 && c1[k - 1]! > 0) sigSlice.push(logReturn(c1[k]!, c1[k - 1]!));
+    }
+    const sig = stdev(sigSlice);
+    const event = isEvent({
       newsShock: 0,
+      atrPctNow: nowPct,
+      atrPctMedian30d: med,
+      ret3h: ret3,
+      sigmaCc24h: sig,
     });
-    const histRegime = composeRegime(snap.trend4h, snap.vol, false);
+    const trend4h = classifyTrend(e20_4[trend4hIdx]!, e50_4[trend4hIdx]!, e200_4[trend4hIdx]!, c4[trend4hIdx]!);
+    const histRegime = composeRegime(trend4h, vol, event);
     if (histRegime !== regimeNow && regimeNow !== "EVENT") continue;
-    if (regimeNow === "EVENT" && !snap.event) continue;
-    const p0 = h1[i]!.close;
-    const pH = h1[i + horizonHours]!.close;
-    if (p0 > 0 && pH > 0) facts.push(Math.log(pH / p0));
+    if (regimeNow === "EVENT" && !event) continue;
+    const pH = c1[i + horizonHours]!;
+    if (pH > 0) facts.push(Math.log(pH / close));
   }
   if (facts.length < EMPIRICAL_MIN_SAMPLES) return null;
   const sorted = facts.slice().sort((a, b) => a - b);

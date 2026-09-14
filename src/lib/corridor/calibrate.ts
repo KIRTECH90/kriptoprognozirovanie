@@ -26,6 +26,16 @@ export function newsAsOf(news: NewsItem[], t: number): NewsItem[] {
   return news.filter((n) => n.publishedAt <= t);
 }
 
+export type HitRow = {
+  ts: number;
+  price: number;
+  low24: number;
+  high24: number;
+  fact24: number | null;
+  hit24: boolean | null;
+  width24: number;
+};
+
 export type WalkForwardResult = {
   calibration: Calibration;
   coverage24: number;
@@ -34,6 +44,8 @@ export type WalkForwardResult = {
   medianWidth48: number;
   n24: number;
   n48: number;
+  hours: number;
+  rows: HitRow[];
 };
 
 /**
@@ -47,13 +59,16 @@ export function walkForwardCalibrate(opts: {
   m15?: Candle[];
   news?: NewsItem[];
   stepHours?: number;
+  symbol?: string;
 }): WalkForwardResult {
   const step = opts.stepHours ?? CAL_STEP_HOURS;
   const news = opts.news ?? [];
+  const symbol = opts.symbol ?? "BTCUSDT";
   const hits24: boolean[] = [];
   const hits48: boolean[] = [];
   const widths24: number[] = [];
   const widths48: number[] = [];
+  const rows: HitRow[] = [];
 
   const last = opts.h1.length - 1;
   const start = Math.max(220, last - 400 * 24);
@@ -67,7 +82,7 @@ export function walkForwardCalibrate(opts: {
     };
     if (prefix.h1.length < 80 || prefix.h4.length < 40) continue;
     const bundle = runEngine({
-      symbol: "BTCUSDT",
+      symbol,
       candles: prefix,
       news: newsAsOf(news, t),
       fearGreed: null,
@@ -78,12 +93,23 @@ export function walkForwardCalibrate(opts: {
       calibration: DEFAULT_CALIBRATION,
       now: t,
       source: "snapshot",
-      skipEmpirical: true,
+      // Same corridor as the screen: empirical on. Skipping it would calibrate a Gaussian band.
+      skipEmpirical: false,
     });
     const p24 = opts.h1[i + 24]?.close;
     if (p24 != null) {
-      hits24.push(p24 >= bundle.api.horizon_24h.low && p24 <= bundle.api.horizon_24h.high);
+      const hit = p24 >= bundle.api.horizon_24h.low && p24 <= bundle.api.horizon_24h.high;
+      hits24.push(hit);
       widths24.push(bundle.api.horizon_24h.width_pct);
+      rows.push({
+        ts: t,
+        price: bundle.api.price,
+        low24: bundle.api.horizon_24h.low,
+        high24: bundle.api.horizon_24h.high,
+        fact24: p24,
+        hit24: hit,
+        width24: bundle.api.horizon_24h.width_pct,
+      });
     }
     const p48 = opts.h1[i + 48]?.close;
     if (p48 != null) {
@@ -133,5 +159,7 @@ export function walkForwardCalibrate(opts: {
     medianWidth48,
     n24: hits24.length,
     n48: hits48.length,
+    hours: opts.h1.length,
+    rows,
   };
 }
