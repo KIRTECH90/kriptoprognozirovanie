@@ -19,12 +19,14 @@ import {
   volumesOf,
 } from "./indicators.ts";
 import { buildCorridors, computeWidthMultiplier, empiricalQuantiles } from "./interval.ts";
+import { buildMarketNote, periodReturns } from "./market-brief.ts";
 import { clip, roundTo } from "./math.ts";
 import { scoreNews } from "./news-score.ts";
 import { regimeFromSets } from "./regime.ts";
 import type { EngineInput, ForecastBundle, HorizonBand } from "./types.ts";
 import { computeSigmas } from "./volatility.ts";
 import { priceDecimals } from "../format.ts";
+import { getAsset, parseSymbol } from "../markets.ts";
 
 function finishHorizon(h: HorizonBand, p0: number, muRaw: number, decimals: number): HorizonBand {
   const raw = p0 * Math.exp(muRaw);
@@ -57,6 +59,8 @@ export function runEngine(input: EngineInput): ForecastBundle {
   const { sTa, rsi } = taScore({ trend4h: snap.trend4h, h1: candles.h1 });
   const r24 = realizedReturn(candles.h1, 24);
   const r48 = realizedReturn(candles.h1, 48);
+  const periods = periodReturns(candles.h1, candles.d1);
+  const assetName = getAsset(parseSymbol(input.symbol).asset).name;
   const centers = computeCenters({
     p0,
     sTa,
@@ -182,7 +186,22 @@ export function runEngine(input: EngineInput): ForecastBundle {
       mu48: centers.mu48,
       muRaw24: centers.muRaw24,
       muRaw48: centers.muRaw48,
-      realized24: r24,
+      realized24: periods.r24,
+      realized7d: periods.r7,
+      realized30d: periods.r30,
+      high24: Number.isFinite(periods.high24) ? roundTo(periods.high24, decimals) : roundTo(p0, decimals),
+      low24: Number.isFinite(periods.low24) ? roundTo(periods.low24, decimals) : roundTo(p0, decimals),
+      high30: Number.isFinite(periods.high30) ? roundTo(periods.high30, decimals) : roundTo(p0, decimals),
+      low30: Number.isFinite(periods.low30) ? roundTo(periods.low30, decimals) : roundTo(p0, decimals),
+      marketNote: buildMarketNote({
+        name: assetName,
+        price: p0,
+        r24: periods.r24,
+        r7: periods.r7,
+        r30: periods.r30,
+        low30: periods.low30,
+        high30: periods.high30,
+      }),
       w,
       newsShift,
       newsShock,
@@ -202,7 +221,9 @@ export function runEngine(input: EngineInput): ForecastBundle {
       source: input.source,
       headlines: newsAgg.items.slice(0, 5).map((n) => ({
         title: n.title,
-        type: n.type,
+        source: n.source,
+        url: n.url,
+        publishedAt: n.publishedAt,
         polarity: n.polarity,
       })),
       calibration: input.calibration,

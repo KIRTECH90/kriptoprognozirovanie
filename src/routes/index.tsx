@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import type { ErrorComponentProps } from "@tanstack/react-router";
 import { ForecastApp } from "@/components/forecast-app";
+import { Splash } from "@/components/splash";
 import { Button } from "@/components/ui/button";
 import { getForecastFn } from "@/lib/forecast";
 import { normalizePair } from "@/lib/markets";
@@ -34,16 +35,7 @@ function Home() {
 }
 
 function Pending() {
-  return (
-    <main className="mx-auto flex min-h-dvh max-w-xl flex-col px-4 pt-5">
-      <p className="text-xs font-medium uppercase tracking-widest text-subtle">Прогноз цены</p>
-      <h1 className="mt-1 text-2xl font-semibold tracking-tight">Коридор</h1>
-      <p className="mt-2 text-sm text-muted">Считаю ориентир…</p>
-      <div className="mt-6 h-16 animate-pulse rounded-[var(--radius-lg)] bg-surface" />
-      <div className="mt-6 h-40 animate-pulse rounded-[var(--radius-xl)] bg-surface" />
-      <div className="mt-4 h-48 animate-pulse rounded-[var(--radius-lg)] bg-surface" />
-    </main>
-  );
+  return <Splash />;
 }
 
 function PairError({ error }: ErrorComponentProps) {

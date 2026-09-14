@@ -1,5 +1,6 @@
 import { FETCH_TIMEOUT_MS } from "@/lib/corridor/config.ts";
 import type { NewsItem } from "@/lib/corridor/types.ts";
+import { ASSETS } from "@/lib/markets.ts";
 
 const RSS_FEEDS = [
   { source: "CoinDesk", url: "https://www.coindesk.com/arc/outboundfeeds/rss/?outputType=xml" },
@@ -23,6 +24,11 @@ function tag(block: string, name: string): string {
   return m ? decodeXml(m[1]!.trim()) : "";
 }
 
+function coinsOf(text: string): string[] {
+  const hay = text.toLowerCase();
+  return ASSETS.filter((a) => a.keywords.some((k) => hay.includes(k))).map((a) => a.id);
+}
+
 function parseRss(xml: string, source: string): NewsItem[] {
   const items = [...xml.matchAll(/<item>([\s\S]*?)<\/item>/gi)];
   const out: NewsItem[] = [];
@@ -39,7 +45,7 @@ function parseRss(xml: string, source: string): NewsItem[] {
       source,
       url,
       publishedAt: Number.isFinite(publishedAt) ? publishedAt : Date.now(),
-      coins: /bitcoin|btc/i.test(`${title} ${rawText}`) ? ["BTC"] : [],
+      coins: coinsOf(`${title} ${rawText}`),
       rawText: rawText.replace(/<[^>]+>/g, " ").slice(0, 500),
     });
   }

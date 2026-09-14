@@ -112,6 +112,13 @@ export type ForecastDetails = {
   muRaw24: number;
   muRaw48: number;
   realized24: number;
+  realized7d: number;
+  realized30d: number;
+  high24: number;
+  low24: number;
+  high30: number;
+  low30: number;
+  marketNote: string;
   w: number;
   newsShift: number;
   newsShock: number;
@@ -129,7 +136,7 @@ export type ForecastDetails = {
   tfAligned: boolean;
   sTa: number;
   source: "live" | "snapshot";
-  headlines: { title: string; type: NewsType; polarity: number }[];
+  headlines: { title: string; source: string; url: string; publishedAt: number; polarity: number }[];
   calibration: Calibration;
 };
 

@@ -3,11 +3,14 @@ import { useNavigate } from "@tanstack/react-router";
 import { RefreshCw } from "lucide-react";
 import { CorridorBar } from "@/components/corridor-bar.tsx";
 import { MarketPicker } from "@/components/market-picker.tsx";
+import { SplashOverlay } from "@/components/splash.tsx";
 import { Badge } from "@/components/ui/badge.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { getForecastFn } from "@/lib/forecast.ts";
+import { pctFromLog } from "@/lib/corridor/market-brief.ts";
 import {
   fearGreedPhrase,
+  formatAgo,
   formatClock,
   formatOdds,
   formatPct,
@@ -51,6 +54,7 @@ export function ForecastApp({
   const [autoMin, setAutoMin] = useState(15);
   const [nowTs, setNowTs] = useState(0);
   const [hydrated, setHydrated] = useState(false);
+  const [splash, setSplash] = useState(true);
   const reqId = useRef(0);
   const lastFetch = useRef(Date.now());
 
@@ -136,10 +140,11 @@ export function ForecastApp({
   const domainMin = Math.min(api.horizon_48h.low, api.horizon_24h.low, api.price);
   const domainMax = Math.max(api.horizon_48h.high, api.horizon_24h.high, api.price);
   const nextIn = autoMin ? autoMin * 60_000 - (nowTs - lastFetch.current) : 0;
-  const realized = bundle.details.realized24;
+  const d = bundle.details;
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-xl flex-col px-4 pb-16 pt-5 sm:px-6">
+      {splash ? <SplashOverlay onFinished={() => setSplash(false)} /> : null}
       <header className="flex items-start justify-between gap-3">
         <div>
           <p className="text-xs font-medium uppercase tracking-widest text-subtle">Прогноз цены</p>
@@ -210,12 +215,42 @@ export function ForecastApp({
           <Badge tone="neutral">Уверенность {confidenceLabel(api.confidence)}</Badge>
           {api.stale ? <Badge tone="warn">Данные несвежие</Badge> : null}
         </div>
-        <p className="mt-3 text-sm text-muted">
-          За прошлые сутки {formatPct(Math.exp(realized) - 1)}
-          {fg ? ` · настроение ${fg}` : null}
+        <div className="mt-4 grid grid-cols-3 gap-2">
+          <Period label="Сутки" pct={pctFromLog(d.realized24)} />
+          <Period label="Неделя" pct={pctFromLog(d.realized7d)} />
+          <Period label="Месяц" pct={pctFromLog(d.realized30d)} />
+        </div>
+        <p className="mt-3 text-sm leading-relaxed text-fg">{d.marketNote}</p>
+        <p className="mt-2 text-xs text-subtle">
+          Диапазон суток {formatPrice(d.low24, dec)} — {formatPrice(d.high24, dec)} {quote}
         </p>
+        {fg ? <p className="mt-2 text-sm text-muted">Настроение рынка {fg}</p> : null}
         <p className="mt-2 text-xs text-subtle">обновлено {formatTime(api.ts)}</p>
       </section>
+
+      {d.headlines.length ? (
+        <section className="mt-4 rounded-[var(--radius-lg)] bg-surface p-5 shadow-[var(--shadow-border)]">
+          <h2 className="text-base font-semibold">Новости</h2>
+          <ul className="mt-3 space-y-3">
+            {d.headlines.slice(0, 3).map((n) => (
+              <li key={`${n.publishedAt}-${n.title}`}>
+                {n.url ? (
+                  <a
+                    href={n.url}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="block rounded-[var(--radius-sm)] outline-none transition-colors duration-150 hover:bg-bg-elevated focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                  >
+                    <NewsLine title={n.title} source={n.source} ago={nowTs ? formatAgo(n.publishedAt, nowTs) : "недавно"} />
+                  </a>
+                ) : (
+                  <NewsLine title={n.title} source={n.source} ago={nowTs ? formatAgo(n.publishedAt, nowTs) : "недавно"} />
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <HorizonCard
         title="Через 24 часа"
@@ -347,3 +382,25 @@ function HorizonCard({
     </section>
   );
 }
+
+function Period({ label, pct }: { label: string; pct: number }) {
+  return (
+    <p className="rounded-[var(--radius-sm)] bg-bg-elevated px-2.5 py-2.5">
+      <span className="block text-xs text-subtle">{label}</span>
+      <span className="font-mono text-sm font-medium tabular-nums">{formatPct(pct)}</span>
+    </p>
+  );
+}
+
+function NewsLine({ title, source, ago }: { title: string; source: string; ago: string }) {
+  return (
+    <div className="px-1 py-0.5">
+      <p className="text-xs text-subtle">
+        {ago}
+        {source ? ` · ${source}` : ""}
+      </p>
+      <p className="mt-0.5 text-sm leading-snug text-fg">{title}</p>
+    </div>
+  );
+}
+

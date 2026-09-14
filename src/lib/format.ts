@@ -55,6 +55,17 @@ export function formatClock(ms: number): string {
   return `${m}:${r.toString().padStart(2, "0")}`;
 }
 
+export function formatAgo(ts: number, now: number): string {
+  if (!Number.isFinite(ts)) return "";
+  const m = Math.max(0, Math.round((now - ts) / 60_000));
+  if (m < 1) return "только что";
+  if (m < 60) return `${m} мин назад`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h} ч назад`;
+  const d = Math.round(h / 24);
+  return `${d} дн. назад`;
+}
+
 export function fearGreedPhrase(value: number | null, classification: string | null): string | null {
   if (value == null) return classification;
   let mood = "нейтрально";

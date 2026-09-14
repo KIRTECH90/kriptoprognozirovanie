@@ -80,3 +80,135 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-bg);
+  color: var(--color-fg);
+  padding: 1.5rem;
+}
+
+.splash-out {
+  opacity: 0;
+  filter: blur(4px);
+  transform: translateY(-8px);
+  transition:
+    opacity 380ms var(--ease-out),
+    filter 380ms var(--ease-out),
+    transform 380ms var(--ease-out);
+  pointer-events: none;
+}
+
+.splash-kicker {
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-subtle);
+  opacity: 0;
+  transform: translateY(8px);
+  animation: splash-rise 500ms var(--ease-out) 80ms forwards;
+}
+
+.splash-title {
+  margin-top: 0.5rem;
+  font-size: 2.25rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  opacity: 0;
+  transform: translateY(10px);
+  animation: splash-rise 560ms var(--ease-out) 160ms forwards;
+}
+
+.splash-stage {
+  position: relative;
+  width: 13rem;
+  height: 2.5rem;
+  margin-top: 1.75rem;
+}
+
+.splash-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--color-track);
+  transform: translateY(-50%) scaleX(0);
+  transform-origin: center;
+  animation: splash-track 700ms var(--ease-out) 280ms forwards;
+}
+
+.splash-fill {
+  position: absolute;
+  left: 18%;
+  right: 18%;
+  top: 50%;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--color-range);
+  transform: translateY(-50%) scaleX(0);
+  transform-origin: center;
+  animation: splash-track 800ms var(--ease-out) 520ms forwards;
+}
+
+.splash-node {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 999px;
+  background: var(--color-fg);
+  transform: translate(-50%, -50%) scale(0.25);
+  opacity: 0;
+  animation:
+    splash-node 420ms var(--ease-out) 780ms forwards,
+    splash-pulse 2.2s ease-in-out 1200ms infinite;
+}
+
+.splash-caption {
+  margin-top: 1.5rem;
+  font-size: 0.875rem;
+  color: var(--color-muted);
+  opacity: 0;
+  animation: splash-rise 500ms var(--ease-out) 640ms forwards;
+}
+
+@keyframes splash-rise {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes splash-track {
+  to {
+    transform: translateY(-50%) scaleX(1);
+  }
+}
+
+@keyframes splash-node {
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes splash-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--color-fg) 0%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 8px color-mix(in oklab, var(--color-fg) 12%, transparent);
+  }
+}
+
