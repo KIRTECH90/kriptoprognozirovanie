@@ -92,45 +92,143 @@
   background: var(--color-bg);
   color: var(--color-fg);
   padding: 1.5rem;
+  overflow: hidden;
 }
 
 .splash-out {
   opacity: 0;
-  filter: blur(4px);
-  transform: translateY(-8px);
+  filter: blur(6px);
+  transform: translateY(-10px);
   transition:
-    opacity 380ms var(--ease-out),
-    filter 380ms var(--ease-out),
-    transform 380ms var(--ease-out);
+    opacity 480ms var(--ease-out),
+    filter 480ms var(--ease-out),
+    transform 480ms var(--ease-out);
   pointer-events: none;
 }
 
+.splash-glow {
+  position: absolute;
+  width: 22rem;
+  height: 22rem;
+  border-radius: 999px;
+  background: radial-gradient(
+    circle,
+    color-mix(in oklab, var(--color-fg) 9%, transparent),
+    transparent 68%
+  );
+  pointer-events: none;
+  animation: splash-glow 2.8s ease-in-out infinite;
+}
+
 .splash-kicker {
+  position: relative;
   font-size: 0.75rem;
   font-weight: 500;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--color-subtle);
   opacity: 0;
   transform: translateY(8px);
-  animation: splash-rise 500ms var(--ease-out) 80ms forwards;
+  animation: splash-rise 520ms var(--ease-out) 60ms forwards;
 }
 
 .splash-title {
-  margin-top: 0.5rem;
-  font-size: 2.25rem;
+  position: relative;
+  margin-top: 0.55rem;
+  font-size: 2.6rem;
   font-weight: 600;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+
+.splash-letter {
+  display: inline-block;
   opacity: 0;
-  transform: translateY(10px);
-  animation: splash-rise 560ms var(--ease-out) 160ms forwards;
+  transform: translateY(12px);
+  filter: blur(6px);
+  animation: splash-letter 560ms var(--ease-out) forwards;
+}
+
+.splash-letter:nth-child(1) {
+  animation-delay: 120ms;
+}
+.splash-letter:nth-child(2) {
+  animation-delay: 175ms;
+}
+.splash-letter:nth-child(3) {
+  animation-delay: 230ms;
+}
+.splash-letter:nth-child(4) {
+  animation-delay: 285ms;
+}
+.splash-letter:nth-child(5) {
+  animation-delay: 340ms;
+}
+.splash-letter:nth-child(6) {
+  animation-delay: 395ms;
+}
+.splash-letter:nth-child(7) {
+  animation-delay: 450ms;
+}
+
+.splash-chart {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 0.4rem;
+  height: 3.25rem;
+  margin-top: 1.75rem;
+}
+
+.splash-bar {
+  width: 0.42rem;
+  border-radius: 2px 2px 1px 1px;
+  background: var(--color-range);
+  transform: scaleY(0);
+  transform-origin: bottom;
+  opacity: 0.85;
+  animation: splash-bar 640ms var(--ease-out) forwards;
+}
+
+.splash-bar:nth-child(1) {
+  height: 1.05rem;
+  animation-delay: 280ms;
+}
+.splash-bar:nth-child(2) {
+  height: 1.7rem;
+  animation-delay: 340ms;
+}
+.splash-bar:nth-child(3) {
+  height: 1.25rem;
+  animation-delay: 400ms;
+}
+.splash-bar:nth-child(4) {
+  height: 2.15rem;
+  animation-delay: 460ms;
+}
+.splash-bar:nth-child(5) {
+  height: 1.55rem;
+  animation-delay: 520ms;
+}
+.splash-bar:nth-child(6) {
+  height: 2.55rem;
+  animation-delay: 580ms;
+}
+.splash-bar:nth-child(7) {
+  height: 1.85rem;
+  animation-delay: 640ms;
+}
+
+.splash-bar.is-now {
+  background: var(--color-fg);
 }
 
 .splash-stage {
   position: relative;
-  width: 13rem;
+  width: 14.5rem;
   height: 2.5rem;
-  margin-top: 1.75rem;
+  margin-top: 1.15rem;
 }
 
 .splash-track {
@@ -143,49 +241,88 @@
   background: var(--color-track);
   transform: translateY(-50%) scaleX(0);
   transform-origin: center;
-  animation: splash-track 700ms var(--ease-out) 280ms forwards;
+  animation: splash-track 700ms var(--ease-out) 420ms forwards;
 }
 
 .splash-fill {
   position: absolute;
-  left: 18%;
-  right: 18%;
+  left: 16%;
+  right: 16%;
   top: 50%;
   height: 2px;
   border-radius: 999px;
   background: var(--color-range);
   transform: translateY(-50%) scaleX(0);
   transform-origin: center;
-  animation: splash-track 800ms var(--ease-out) 520ms forwards;
+  animation: splash-track 820ms var(--ease-out) 680ms forwards;
 }
 
 .splash-node {
   position: absolute;
-  left: 50%;
+  left: 22%;
   top: 50%;
-  width: 0.7rem;
-  height: 0.7rem;
+  width: 0.72rem;
+  height: 0.72rem;
   border-radius: 999px;
   background: var(--color-fg);
   transform: translate(-50%, -50%) scale(0.25);
   opacity: 0;
   animation:
-    splash-node 420ms var(--ease-out) 780ms forwards,
-    splash-pulse 2.2s ease-in-out 1200ms infinite;
+    splash-node 380ms var(--ease-out) 880ms forwards,
+    splash-node-run 1500ms var(--ease-out) 1260ms forwards,
+    splash-pulse 2.1s ease-in-out 2760ms infinite;
 }
 
 .splash-caption {
-  margin-top: 1.5rem;
+  position: relative;
+  margin-top: 1.35rem;
+  height: 1.4rem;
+  width: 16.5rem;
   font-size: 0.875rem;
   color: var(--color-muted);
+}
+
+.splash-step {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   opacity: 0;
-  animation: splash-rise 500ms var(--ease-out) 640ms forwards;
+  animation: splash-step 3000ms var(--ease-out) forwards;
+}
+
+.splash-step:nth-child(1) {
+  animation-delay: 0ms;
+}
+.splash-step:nth-child(2) {
+  animation-delay: 720ms;
+}
+.splash-step:nth-child(3) {
+  animation-delay: 1440ms;
+}
+.splash-step:nth-child(4) {
+  animation: splash-step-last 1560ms var(--ease-out) 2160ms forwards;
 }
 
 @keyframes splash-rise {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes splash-letter {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+@keyframes splash-bar {
+  to {
+    transform: scaleY(1);
   }
 }
 
@@ -202,13 +339,70 @@
   }
 }
 
+@keyframes splash-node-run {
+  from {
+    left: 22%;
+  }
+  to {
+    left: 66%;
+  }
+}
+
 @keyframes splash-pulse {
   0%,
   100% {
     box-shadow: 0 0 0 0 color-mix(in oklab, var(--color-fg) 0%, transparent);
   }
   50% {
-    box-shadow: 0 0 0 8px color-mix(in oklab, var(--color-fg) 12%, transparent);
+    box-shadow: 0 0 0 9px color-mix(in oklab, var(--color-fg) 14%, transparent);
+  }
+}
+
+@keyframes splash-step {
+  0% {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  10% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  20% {
+    opacity: 1;
+  }
+  28% {
+    opacity: 0;
+    transform: translateY(-7px);
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes splash-step-last {
+  0% {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  18% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes splash-glow {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.08);
   }
 }
 

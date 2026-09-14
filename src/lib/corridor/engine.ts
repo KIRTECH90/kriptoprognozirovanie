@@ -23,7 +23,7 @@ import { buildMarketNote, periodReturns } from "./market-brief.ts";
 import { clip, roundTo } from "./math.ts";
 import { scoreNews } from "./news-score.ts";
 import { regimeFromSets } from "./regime.ts";
-import type { EngineInput, ForecastBundle, HorizonBand } from "./types.ts";
+import type { EngineInput, ForecastBundle, HorizonBand, ScoredNews } from "./types.ts";
 import { computeSigmas } from "./volatility.ts";
 import { priceDecimals } from "../format.ts";
 import { getAsset, parseSymbol } from "../markets.ts";
@@ -38,6 +38,29 @@ function finishHorizon(h: HorizonBand, p0: number, muRaw: number, decimals: numb
     high: roundTo(h.high, decimals),
     width_pct: roundTo(h.width_pct, WIDTH_DECIMALS),
     target_coverage: h.target_coverage,
+  };
+}
+
+function pickHeadlines(items: ScoredNews[], asset: string): {
+  items: ForecastBundle["details"]["headlines"];
+  scope: "asset" | "market";
+} {
+  const keys = getAsset(asset).keywords;
+  const id = asset.toUpperCase();
+  const relevant = items.filter((n) => {
+    const hay = `${n.title} ${n.rawText} ${n.coins.join(" ")}`.toLowerCase();
+    return n.coins.some((c) => c.toUpperCase() === id) || keys.some((k) => hay.includes(k));
+  });
+  const src = relevant.length ? relevant : items;
+  return {
+    scope: relevant.length ? "asset" : "market",
+    items: src.slice(0, 4).map((n) => ({
+      title: n.title,
+      source: n.source,
+      url: n.url,
+      publishedAt: n.publishedAt,
+      polarity: n.polarity,
+    })),
   };
 }
 
@@ -60,7 +83,8 @@ export function runEngine(input: EngineInput): ForecastBundle {
   const r24 = realizedReturn(candles.h1, 24);
   const r48 = realizedReturn(candles.h1, 48);
   const periods = periodReturns(candles.h1, candles.d1);
-  const assetName = getAsset(parseSymbol(input.symbol).asset).name;
+  const assetId = parseSymbol(input.symbol).asset;
+  const assetName = getAsset(assetId).name;
   const centers = computeCenters({
     p0,
     sTa,
@@ -161,6 +185,7 @@ export function runEngine(input: EngineInput): ForecastBundle {
   });
 
   const ts = new Date(input.now).toISOString().replace(/\.\d{3}Z$/, "Z");
+  const newsPick = pickHeadlines(newsAgg.items, assetId);
   const api = {
     symbol: input.symbol || SYMBOL,
     ts,
@@ -191,6 +216,8 @@ export function runEngine(input: EngineInput): ForecastBundle {
       realized30d: periods.r30,
       high24: Number.isFinite(periods.high24) ? roundTo(periods.high24, decimals) : roundTo(p0, decimals),
       low24: Number.isFinite(periods.low24) ? roundTo(periods.low24, decimals) : roundTo(p0, decimals),
+      high7: Number.isFinite(periods.high7) ? roundTo(periods.high7, decimals) : roundTo(p0, decimals),
+      low7: Number.isFinite(periods.low7) ? roundTo(periods.low7, decimals) : roundTo(p0, decimals),
       high30: Number.isFinite(periods.high30) ? roundTo(periods.high30, decimals) : roundTo(p0, decimals),
       low30: Number.isFinite(periods.low30) ? roundTo(periods.low30, decimals) : roundTo(p0, decimals),
       marketNote: buildMarketNote({
@@ -199,8 +226,11 @@ export function runEngine(input: EngineInput): ForecastBundle {
         r24: periods.r24,
         r7: periods.r7,
         r30: periods.r30,
+        low24: periods.low24,
+        high24: periods.high24,
         low30: periods.low30,
         high30: periods.high30,
+        fgValue: input.fearGreed?.value ?? null,
       }),
       w,
       newsShift,
@@ -219,13 +249,8 @@ export function runEngine(input: EngineInput): ForecastBundle {
       tfAligned: snap.tfAligned,
       sTa,
       source: input.source,
-      headlines: newsAgg.items.slice(0, 5).map((n) => ({
-        title: n.title,
-        source: n.source,
-        url: n.url,
-        publishedAt: n.publishedAt,
-        polarity: n.polarity,
-      })),
+      headlines: newsPick.items,
+      newsScope: newsPick.scope,
       calibration: input.calibration,
     },
   };

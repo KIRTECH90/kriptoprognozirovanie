@@ -7,7 +7,7 @@ import { SplashOverlay } from "@/components/splash.tsx";
 import { Badge } from "@/components/ui/badge.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { getForecastFn } from "@/lib/forecast.ts";
-import { pctFromLog } from "@/lib/corridor/market-brief.ts";
+import { pctFromLog, rangePos } from "@/lib/corridor/market-brief.ts";
 import {
   fearGreedPhrase,
   formatAgo,
@@ -19,7 +19,7 @@ import {
   formatTime,
   priceDecimals,
 } from "@/lib/format.ts";
-import { quotesFor } from "@/lib/markets.ts";
+import { getAsset, quotesFor } from "@/lib/markets.ts";
 import { confidenceLabel, moodOf, regimeLabel } from "@/lib/corridor/drivers.ts";
 import type { ForecastBundle, HorizonBand } from "@/lib/corridor/types.ts";
 import { cn } from "@/lib/utils.ts";
@@ -215,42 +215,58 @@ export function ForecastApp({
           <Badge tone="neutral">Уверенность {confidenceLabel(api.confidence)}</Badge>
           {api.stale ? <Badge tone="warn">Данные несвежие</Badge> : null}
         </div>
-        <div className="mt-4 grid grid-cols-3 gap-2">
+
+        <p className="mt-5 text-xs font-medium uppercase tracking-widest text-subtle">Что происходит</p>
+        <div className="mt-2 grid grid-cols-3 gap-2">
           <Period label="Сутки" pct={pctFromLog(d.realized24)} />
           <Period label="Неделя" pct={pctFromLog(d.realized7d)} />
           <Period label="Месяц" pct={pctFromLog(d.realized30d)} />
         </div>
-        <p className="mt-3 text-sm leading-relaxed text-fg">{d.marketNote}</p>
-        <p className="mt-2 text-xs text-subtle">
-          Диапазон суток {formatPrice(d.low24, dec)} — {formatPrice(d.high24, dec)} {quote}
-        </p>
-        {fg ? <p className="mt-2 text-sm text-muted">Настроение рынка {fg}</p> : null}
-        <p className="mt-2 text-xs text-subtle">обновлено {formatTime(api.ts)}</p>
-      </section>
+        <div className="mt-4 space-y-3">
+          <RangeMeter label="Сутки" low={d.low24} high={d.high24} price={api.price} quote={quote} dec={dec} />
+          <RangeMeter label="Неделя" low={d.low7} high={d.high7} price={api.price} quote={quote} dec={dec} />
+          <RangeMeter label="Месяц" low={d.low30} high={d.high30} price={api.price} quote={quote} dec={dec} />
+        </div>
+        <p className="mt-4 text-sm leading-relaxed text-fg">{d.marketNote}</p>
+        {fg ? <p className="mt-2 text-sm text-muted">Индекс страха и жадности {fg}</p> : null}
 
-      {d.headlines.length ? (
-        <section className="mt-4 rounded-[var(--radius-lg)] bg-surface p-5 shadow-[var(--shadow-border)]">
-          <h2 className="text-base font-semibold">Новости</h2>
-          <ul className="mt-3 space-y-3">
-            {d.headlines.slice(0, 3).map((n) => (
-              <li key={`${n.publishedAt}-${n.title}`}>
-                {n.url ? (
-                  <a
-                    href={n.url}
-                    target="_blank"
-                    rel="noreferrer noopener"
-                    className="block rounded-[var(--radius-sm)] outline-none transition-colors duration-150 hover:bg-bg-elevated focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-                  >
-                    <NewsLine title={n.title} source={n.source} ago={nowTs ? formatAgo(n.publishedAt, nowTs) : "недавно"} />
-                  </a>
-                ) : (
-                  <NewsLine title={n.title} source={n.source} ago={nowTs ? formatAgo(n.publishedAt, nowTs) : "недавно"} />
-                )}
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
+        {d.headlines.length ? (
+          <div className="mt-5 border-t border-border pt-4">
+            <h2 className="text-sm font-semibold">
+              {d.newsScope === "asset" ? `Новости по ${getAsset(asset).name}` : "Последние новости рынка"}
+            </h2>
+            <ul className="mt-3 space-y-3">
+              {d.headlines.slice(0, 4).map((n) => (
+                <li key={`${n.publishedAt}-${n.title}`}>
+                  {n.url ? (
+                    <a
+                      href={n.url}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      className="block rounded-[var(--radius-sm)] outline-none transition-colors duration-150 hover:bg-bg-elevated focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                    >
+                      <NewsLine
+                        title={n.title}
+                        source={n.source}
+                        ago={nowTs ? formatAgo(n.publishedAt, nowTs) : "недавно"}
+                      />
+                    </a>
+                  ) : (
+                    <NewsLine
+                      title={n.title}
+                      source={n.source}
+                      ago={nowTs ? formatAgo(n.publishedAt, nowTs) : "недавно"}
+                    />
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : (
+          <p className="mt-4 text-sm text-muted">Свежих новостей по этой валюте сейчас нет.</p>
+        )}
+        <p className="mt-3 text-xs text-subtle">обновлено {formatTime(api.ts)}</p>
+      </section>
 
       <HorizonCard
         title="Через 24 часа"
@@ -384,11 +400,47 @@ function HorizonCard({
 }
 
 function Period({ label, pct }: { label: string; pct: number }) {
+  const tone = pct > 0.002 ? "text-ok" : pct < -0.002 ? "text-event" : "text-fg";
   return (
     <p className="rounded-[var(--radius-sm)] bg-bg-elevated px-2.5 py-2.5">
       <span className="block text-xs text-subtle">{label}</span>
-      <span className="font-mono text-sm font-medium tabular-nums">{formatPct(pct)}</span>
+      <span className={cn("font-mono text-sm font-medium tabular-nums", tone)}>{formatPct(pct)}</span>
     </p>
+  );
+}
+
+function RangeMeter({
+  label,
+  low,
+  high,
+  price,
+  quote,
+  dec,
+}: {
+  label: string;
+  low: number;
+  high: number;
+  price: number;
+  quote: string;
+  dec: number;
+}) {
+  const pos = rangePos(price, low, high);
+  return (
+    <div>
+      <div className="flex items-baseline justify-between gap-2 text-xs text-subtle">
+        <span>{label}</span>
+        <span className="font-mono tabular-nums">
+          {formatPrice(low, dec)} — {formatPrice(high, dec)} {quote}
+        </span>
+      </div>
+      <div className="relative mt-1.5 h-1.5 rounded-full bg-track">
+        <div
+          className="absolute top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-fg ring-2 ring-surface"
+          style={{ left: `${pos * 100}%` }}
+          title="Сейчас"
+        />
+      </div>
+    </div>
   );
 }
 

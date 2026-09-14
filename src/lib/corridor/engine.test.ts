@@ -56,5 +56,9 @@ describe("engine", () => {
     assert.ok(a.horizon_48h.expected <= a.horizon_48h.high);
     assert.equal(a.drivers.length <= 3, true);
     assert.ok(a.confidence >= 25 && a.confidence <= 88);
+    assert.ok(bundle.details.marketNote.length > 20);
+    assert.ok(bundle.details.high7 > 0);
+    assert.ok(bundle.details.low7 > 0);
+    assert.ok(bundle.details.newsScope === "asset" || bundle.details.newsScope === "market");
   });
 });

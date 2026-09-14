@@ -116,6 +116,8 @@ export type ForecastDetails = {
   realized30d: number;
   high24: number;
   low24: number;
+  high7: number;
+  low7: number;
   high30: number;
   low30: number;
   marketNote: string;
@@ -137,6 +139,7 @@ export type ForecastDetails = {
   sTa: number;
   source: "live" | "snapshot";
   headlines: { title: string; source: string; url: string; publishedAt: number; polarity: number }[];
+  newsScope: "asset" | "market";
   calibration: Calibration;
 };
 
