@@ -1,0 +1,36 @@
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+import { newsAsOf } from "./calibrate.ts";
+import { scoreNews } from "./news-score.ts";
+import type { NewsItem } from "./types.ts";
+
+describe("calibration news timestamp guard", () => {
+  it("drops news published after t so walk-forward cannot peek", () => {
+    const t = Date.UTC(2026, 5, 1, 12);
+    const items: NewsItem[] = [
+      {
+        title: "ETF approved",
+        source: "x",
+        url: "https://a",
+        publishedAt: t - 3600_000,
+        coins: ["BTC"],
+        rawText: "ETF approved",
+      },
+      {
+        title: "Huge hack drains exchange",
+        source: "x",
+        url: "https://b",
+        publishedAt: t + 3600_000,
+        coins: ["BTC"],
+        rawText: "Huge hack drains exchange",
+      },
+    ];
+    const asOf = newsAsOf(items, t);
+    assert.equal(asOf.length, 1);
+    assert.equal(asOf[0]!.title, "ETF approved");
+
+    const leaked = scoreNews(items, t + 2 * 3600_000);
+    const honest = scoreNews(asOf, t);
+    assert.ok(leaked.newsShock > honest.newsShock);
+  });
+});
