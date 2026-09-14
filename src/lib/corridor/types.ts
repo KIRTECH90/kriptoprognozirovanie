@@ -79,6 +79,19 @@ export type Calibration = {
   updated_at: string | null;
 };
 
+export type TradeSide = "buy" | "sell" | "wait";
+export type VerdictStrength = "strong" | "medium" | "weak";
+
+export type Verdict = {
+  side: TradeSide;
+  strength: VerdictStrength;
+  label: string;
+  reason: string;
+  holdHours: number;
+  target: number;
+  invalidation: number;
+};
+
 export type HorizonBand = {
   center: number;
   expected: number;
@@ -97,6 +110,7 @@ export type ForecastResponse = {
   regime: Regime;
   confidence: number;
   drivers: string[];
+  verdict: Verdict;
   disclaimer: string;
   stale: boolean;
 };

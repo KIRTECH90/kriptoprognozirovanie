@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, TrendingDown, TrendingUp, Pause } from "lucide-react";
 import { CorridorBar } from "@/components/corridor-bar.tsx";
 import { MarketPicker } from "@/components/market-picker.tsx";
 import { SplashOverlay } from "@/components/splash.tsx";
@@ -21,7 +21,8 @@ import {
 } from "@/lib/format.ts";
 import { getAsset, quotesFor } from "@/lib/markets.ts";
 import { confidenceLabel, moodOf, regimeLabel } from "@/lib/corridor/drivers.ts";
-import type { ForecastBundle, HorizonBand } from "@/lib/corridor/types.ts";
+import { strengthPhrase, verdictTone } from "@/lib/corridor/verdict.ts";
+import type { ForecastBundle, HorizonBand, Verdict } from "@/lib/corridor/types.ts";
 import { cn } from "@/lib/utils.ts";
 
 const AUTO_KEY = "corridor.autoRefreshMin";
@@ -216,6 +217,8 @@ export function ForecastApp({
           {api.stale ? <Badge tone="warn">Данные несвежие</Badge> : null}
         </div>
 
+        <VerdictPanel verdict={api.verdict} price={api.price} quote={quote} dim={switching} />
+
         <p className="mt-5 text-xs font-medium uppercase tracking-widest text-subtle">Что происходит</p>
         <div className="mt-2 grid grid-cols-3 gap-2">
           <Period label="Сутки" pct={pctFromLog(d.realized24)} />
@@ -306,8 +309,80 @@ export function ForecastApp({
       </section>
 
       <p className="mt-8 text-center text-xs leading-relaxed text-subtle">
-        {api.disclaimer} Это не сигнал купить или продать.
+        {api.disclaimer} Оценка модели, решение за вами.
       </p>
+    </div>
+  );
+}
+
+function VerdictPanel({
+  verdict,
+  price,
+  quote,
+  dim,
+}: {
+  verdict: Verdict;
+  price: number;
+  quote: string;
+  dim: boolean;
+}) {
+  const dec = priceDecimals(price);
+  const tone = verdictTone(verdict.side);
+  const color =
+    verdict.side === "buy" ? "text-ok" : verdict.side === "sell" ? "text-event" : "text-warn";
+  const Icon = verdict.side === "buy" ? TrendingUp : verdict.side === "sell" ? TrendingDown : Pause;
+  const targetMove = price > 0 ? (verdict.target - price) / price : 0;
+  const stopMove = price > 0 ? (verdict.invalidation - price) / price : 0;
+
+  return (
+    <div
+      className={cn(
+        "mt-5 rounded-[var(--radius-md)] bg-bg-elevated px-4 py-4 transition-opacity duration-150",
+        dim && "opacity-50",
+      )}
+    >
+      <p className="text-xs font-medium uppercase tracking-widest text-subtle">Вердикт</p>
+      <div className="mt-2 flex items-center justify-between gap-3">
+        <p className={cn("flex items-center gap-2 text-3xl font-semibold tracking-tight", color)}>
+          <Icon className="size-7" strokeWidth={2.2} />
+          {verdict.label}
+        </p>
+        <Badge tone={tone}>{strengthPhrase(verdict.strength, verdict.side)}</Badge>
+      </div>
+      <p className="mt-2 text-sm leading-relaxed text-fg">{verdict.reason}</p>
+      {verdict.side === "wait" ? (
+        <div className="mt-4 rounded-[var(--radius-sm)] bg-surface px-3 py-3">
+          <p className="text-xs text-subtle">Следующая оценка</p>
+          <p className="mt-1 font-semibold tabular-nums">
+            <span className="font-mono text-2xl">{verdict.holdHours}</span>
+            <span className="ml-1 text-sm text-muted">ч</span>
+          </p>
+        </div>
+      ) : (
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <div className="rounded-[var(--radius-sm)] bg-surface px-3 py-3">
+            <p className="text-xs text-subtle">Фиксировать прибыль</p>
+            <p className="mt-1 font-semibold tabular-nums">
+              <span className="font-mono text-2xl">{verdict.holdHours}</span>
+              <span className="ml-1 text-sm text-muted">ч</span>
+            </p>
+            <p className="mt-1 font-mono text-sm tabular-nums text-fg">
+              {formatPrice(verdict.target, dec)} {quote}
+            </p>
+            <p className="mt-0.5 text-xs text-muted">{formatPct(targetMove)}</p>
+          </div>
+          <div className="rounded-[var(--radius-sm)] bg-surface px-3 py-3">
+            <p className="text-xs text-subtle">Идея не сработала</p>
+            <p className="mt-1 text-sm font-medium">
+              {verdict.side === "buy" ? "ниже" : "выше"}
+            </p>
+            <p className="mt-1 font-mono text-sm tabular-nums text-fg">
+              {formatPrice(verdict.invalidation, dec)} {quote}
+            </p>
+            <p className="mt-0.5 text-xs text-muted">{formatPct(stopMove)}</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

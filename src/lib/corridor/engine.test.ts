@@ -60,5 +60,8 @@ describe("engine", () => {
     assert.ok(bundle.details.high7 > 0);
     assert.ok(bundle.details.low7 > 0);
     assert.ok(bundle.details.newsScope === "asset" || bundle.details.newsScope === "market");
+    assert.ok(["buy", "sell", "wait"].includes(a.verdict.side));
+    assert.ok([12, 24, 48].includes(a.verdict.holdHours));
+    assert.ok(Number.isFinite(a.verdict.target));
   });
 });

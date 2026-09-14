@@ -24,6 +24,7 @@ import { clip, roundTo } from "./math.ts";
 import { scoreNews } from "./news-score.ts";
 import { regimeFromSets } from "./regime.ts";
 import type { EngineInput, ForecastBundle, HorizonBand, ScoredNews } from "./types.ts";
+import { buildVerdict } from "./verdict.ts";
 import { computeSigmas } from "./volatility.ts";
 import { priceDecimals } from "../format.ts";
 import { getAsset, parseSymbol } from "../markets.ts";
@@ -186,6 +187,26 @@ export function runEngine(input: EngineInput): ForecastBundle {
 
   const ts = new Date(input.now).toISOString().replace(/\.\d{3}Z$/, "Z");
   const newsPick = pickHeadlines(newsAgg.items, assetId);
+  const verdict = buildVerdict({
+    price: p0,
+    expected24: band24.expected,
+    expected48: band48.expected,
+    low24: band24.low,
+    high24: band24.high,
+    muRaw24: centers.muRaw24,
+    regime: snap.regime,
+    event: snap.event,
+    newsShock,
+    confidence: conf,
+    rsi,
+    trend1h: snap.trend1h,
+    trend4h: snap.trend4h,
+    trend1d: snap.trend1d,
+    tfAligned: snap.tfAligned,
+    stale: input.staleCandles,
+    low30: Number.isFinite(periods.low30) ? periods.low30 : p0,
+    high30: Number.isFinite(periods.high30) ? periods.high30 : p0,
+  });
   const api = {
     symbol: input.symbol || SYMBOL,
     ts,
@@ -195,6 +216,7 @@ export function runEngine(input: EngineInput): ForecastBundle {
     regime: snap.regime,
     confidence: conf,
     drivers,
+    verdict,
     disclaimer: DISCLAIMER,
     stale: input.staleCandles,
   };
