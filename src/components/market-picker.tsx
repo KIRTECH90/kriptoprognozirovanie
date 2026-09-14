@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, Search } from "lucide-react";
 import { ASSETS, getAsset, getQuote, quotesFor } from "@/lib/markets.ts";
 import { cn } from "@/lib/utils.ts";
@@ -18,6 +18,7 @@ export function MarketPicker({
 }) {
   const [open, setOpen] = useState<Open>(null);
   const [query, setQuery] = useState("");
+  const lockUntil = useRef(0);
   const meta = getAsset(asset);
   const qMeta = getQuote(quote);
   const quotes = quotesFor(asset);
@@ -28,18 +29,25 @@ export function MarketPicker({
     return ASSETS.filter((a) => a.id.toLowerCase().includes(q) || a.name.toLowerCase().includes(q));
   }, [query]);
 
+  function armed() {
+    return Date.now() < lockUntil.current;
+  }
+
   function toggle(next: Open) {
+    if (armed()) return;
     setOpen((cur) => (cur === next ? null : next));
     if (next !== "asset") setQuery("");
   }
 
   function pickAsset(id: string) {
+    lockUntil.current = Date.now() + 450;
     setOpen(null);
     setQuery("");
     if (id !== asset) onAsset(id);
   }
 
   function pickQuote(id: string) {
+    lockUntil.current = Date.now() + 450;
     setOpen(null);
     if (id !== quote) onQuote(id);
   }
@@ -112,6 +120,7 @@ export function MarketPicker({
                       aria-selected={on}
                       onPointerDown={(e) => {
                         e.preventDefault();
+                        e.stopPropagation();
                         pickAsset(a.id);
                       }}
                       className={cn(
@@ -149,6 +158,7 @@ export function MarketPicker({
                   aria-selected={on}
                   onPointerDown={(e) => {
                     e.preventDefault();
+                    e.stopPropagation();
                     pickQuote(q.id);
                   }}
                   className={cn(

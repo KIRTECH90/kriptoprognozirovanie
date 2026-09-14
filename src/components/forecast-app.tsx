@@ -21,12 +21,14 @@ import { confidenceLabel, moodOf, regimeLabel } from "@/lib/corridor/drivers.ts"
 import type { ForecastBundle, HorizonBand } from "@/lib/corridor/types.ts";
 import { cn } from "@/lib/utils.ts";
 
-const AUTO_KEY = "corridor.autoMin";
+const AUTO_KEY = "corridor.autoRefreshMin";
 const AUTO_OPTS = [15, 30, 60] as const;
 
 function readAuto(): number {
   if (typeof window === "undefined") return 15;
-  const n = Number(window.localStorage.getItem(AUTO_KEY));
+  const raw = window.localStorage.getItem(AUTO_KEY);
+  if (raw == null || raw === "") return 15;
+  const n = Number(raw);
   if (n === 0) return 0;
   return AUTO_OPTS.includes(n as (typeof AUTO_OPTS)[number]) ? n : 15;
 }
@@ -46,8 +48,9 @@ export function ForecastApp({
   const [quote, setQuote] = useState(quoteProp);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [autoMin, setAutoMin] = useState(readAuto);
-  const [nowTs, setNowTs] = useState(() => Date.now());
+  const [autoMin, setAutoMin] = useState(15);
+  const [nowTs, setNowTs] = useState(0);
+  const [hydrated, setHydrated] = useState(false);
   const reqId = useRef(0);
   const lastFetch = useRef(Date.now());
 
@@ -60,9 +63,17 @@ export function ForecastApp({
   }, [bundleProp, assetProp, quoteProp]);
 
   useEffect(() => {
+    setHydrated(true);
+    setAutoMin(readAuto());
+    setNowTs(Date.now());
+    lastFetch.current = Date.now();
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
     const t = window.setInterval(() => setNowTs(Date.now()), 1000);
     return () => window.clearInterval(t);
-  }, []);
+  }, [hydrated]);
 
   useEffect(() => {
     if (!autoMin) return;
@@ -144,6 +155,38 @@ export function ForecastApp({
           Проверить
         </Button>
       </header>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {AUTO_OPTS.map((n) => (
+          <button
+            key={n}
+            type="button"
+            onClick={() => setAuto(n)}
+            className={cn(
+              "h-11 rounded-full px-3.5 text-sm font-medium transition-colors duration-150",
+              autoMin === n ? "bg-fg text-bg" : "bg-surface text-fg shadow-[var(--shadow-border)]",
+            )}
+          >
+            {n} мин
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={() => setAuto(0)}
+          className={cn(
+            "h-11 rounded-full px-3.5 text-sm font-medium transition-colors duration-150",
+            autoMin === 0 ? "bg-fg text-bg" : "bg-surface text-fg shadow-[var(--shadow-border)]",
+          )}
+        >
+          Выкл
+        </button>
+        <span className="text-xs text-subtle">
+          {!hydrated
+            ? "авто 15 мин"
+            : autoMin
+              ? `след. ${formatClock(nextIn)}`
+              : "вручную"}
+        </span>
+      </div>
 
       <section className="mt-6">
         <MarketPicker asset={asset} quote={quote} onAsset={selectAsset} onQuote={selectQuote} />
@@ -209,40 +252,6 @@ export function ForecastApp({
         <p className="mt-4 text-sm leading-relaxed text-muted">
           Ориентир — куда клонит модель. Коридор — зона, где цена скорее всего проживёт это время. Если выйдет за край, сценарий не сработал.
         </p>
-      </section>
-
-      <section className="mt-4 rounded-[var(--radius-lg)] bg-surface p-5 shadow-[var(--shadow-border)]">
-        <h2 className="text-base font-semibold">Автообновление</h2>
-        <p className="mt-1 text-sm text-muted">
-          {autoMin
-            ? `Следующая проверка через ${formatClock(nextIn)}`
-            : "Выключено — жмите «Проверить»"}
-        </p>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {AUTO_OPTS.map((n) => (
-            <button
-              key={n}
-              type="button"
-              onClick={() => setAuto(n)}
-              className={cn(
-                "h-11 rounded-full px-4 text-sm font-medium transition-colors duration-150",
-                autoMin === n ? "bg-fg text-bg" : "bg-bg-elevated text-fg",
-              )}
-            >
-              {n} мин
-            </button>
-          ))}
-          <button
-            type="button"
-            onClick={() => setAuto(0)}
-            className={cn(
-              "h-11 rounded-full px-4 text-sm font-medium transition-colors duration-150",
-              autoMin === 0 ? "bg-fg text-bg" : "bg-bg-elevated text-fg",
-            )}
-          >
-            Выкл
-          </button>
-        </div>
       </section>
 
       <p className="mt-8 text-center text-xs leading-relaxed text-subtle">
